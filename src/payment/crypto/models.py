@@ -1,6 +1,6 @@
+from py_ecc.optimized_bls12_381 import FQ, FQ2, normalize
 from py_ecc.typing import Optimized_Field, Optimized_Point3D
 from pydantic import BaseModel
-from py_ecc.optimized_bls12_381 import normalize, FQ, FQ2
 
 
 class G1_Point(BaseModel):

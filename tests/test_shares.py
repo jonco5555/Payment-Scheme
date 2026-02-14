@@ -1,40 +1,39 @@
-"""Unit tests for threshold signature shares module."""
+from py_ecc.optimized_bls12_381 import curve_order
 
 from payment.crypto.shares import (
-    generate_polynomial,
-    evaluate_polynomial,
-    lagrange_coefficient,
-    reconstruct_secret,
-    generate_shares,
-    partial_sign,
+    blind_message,
     combine_partial_signatures,
+    evaluate_polynomial,
+    generate_blinding_factor,
+    generate_polynomial,
+    generate_shares,
+    lagrange_coefficient,
+    partial_blind_sign,
+    partial_sign,
+    reconstruct_secret,
+    unblind_signature,
     verify_signature,
 )
-from py_ecc.optimized_bls12_381 import curve_order
 
 
 def test_generate_polynomial_length():
-    """Polynomial has correct number of coefficients."""
     coeffs = generate_polynomial(3)
     assert len(coeffs) == 4
 
 
 def test_generate_polynomial_randomness():
-    """Generated polynomials are random."""
     poly1 = generate_polynomial(5)
     poly2 = generate_polynomial(5)
     assert poly1 != poly2
 
 
 def test_evaluate_polynomial_constant():
-    """Constant polynomial evaluates correctly."""
     coeffs = [42]
     assert evaluate_polynomial(coeffs, 0) == 42
     assert evaluate_polynomial(coeffs, 100) == 42
 
 
 def test_evaluate_polynomial_linear():
-    """Linear polynomial evaluates correctly."""
     coeffs = [5, 3]  # g(x) = 5 + 3x
     assert evaluate_polynomial(coeffs, 0) == 5
     assert evaluate_polynomial(coeffs, 1) == 8
@@ -42,7 +41,6 @@ def test_evaluate_polynomial_linear():
 
 
 def test_lagrange_coefficient_sum():
-    """Lagrange coefficients sum to 1 for constant polynomial."""
     points = [1, 2, 3]
     lambda_1 = lagrange_coefficient(1, points)
     lambda_2 = lagrange_coefficient(2, points)
@@ -51,7 +49,6 @@ def test_lagrange_coefficient_sum():
 
 
 def test_lagrange_reconstruction():
-    """Lagrange interpolation reconstructs polynomial at 0."""
     coeffs = [5, 2, 3]  # g(x) = 5 + 2x + 3x^2
     secret = coeffs[0]
 
@@ -70,14 +67,12 @@ def test_lagrange_reconstruction():
 
 
 def test_generate_shares_count():
-    """Correct number of shares generated."""
     n, f = 5, 2
     secret_key, shares = generate_shares(n, f)
     assert len(shares) == n
 
 
 def test_generate_shares_ids():
-    """Share IDs are sequential from 1 to n."""
     n, f = 5, 2
     secret_key, shares = generate_shares(n, f)
     ids = [share.id for share in shares]
@@ -85,7 +80,6 @@ def test_generate_shares_ids():
 
 
 def test_reconstruct_with_threshold():
-    """Reconstruct secret with f+1 shares."""
     n, f = 5, 2
     secret_key, shares = generate_shares(n, f)
 
@@ -96,7 +90,6 @@ def test_reconstruct_with_threshold():
 
 
 def test_reconstruct_with_all_shares():
-    """Reconstruct secret with all shares."""
     n, f = 5, 2
     secret_key, shares = generate_shares(n, f)
     reconstructed = reconstruct_secret(shares)
@@ -104,7 +97,6 @@ def test_reconstruct_with_all_shares():
 
 
 def test_insufficient_shares_fails():
-    """Reconstruction fails with fewer than f+1 shares."""
     n, f = 5, 2
     secret_key, shares = generate_shares(n, f)
 
@@ -115,7 +107,6 @@ def test_insufficient_shares_fails():
 
 
 def test_partial_sign_deterministic():
-    """Partial signing is deterministic."""
     n, f = 5, 2
     secret_key, shares = generate_shares(n, f)
 
@@ -127,7 +118,6 @@ def test_partial_sign_deterministic():
 
 
 def test_combine_and_verify():
-    """Combine partial signatures and verify."""
     n, f = 5, 2
     secret_key, shares = generate_shares(n, f)
 
@@ -140,7 +130,6 @@ def test_combine_and_verify():
 
 
 def test_different_subsets_same_signature():
-    """Different subsets produce the same signature."""
     n, f = 7, 3
     secret_key, shares = generate_shares(n, f)
 
@@ -157,7 +146,6 @@ def test_different_subsets_same_signature():
 
 
 def test_signature_invalid_for_different_message():
-    """Signature invalid for different message."""
     n, f = 5, 2
     secret_key, shares = generate_shares(n, f)
 
@@ -172,7 +160,6 @@ def test_signature_invalid_for_different_message():
 
 
 def test_signature_invalid_for_wrong_key():
-    """Signature invalid for different public key."""
     n, f = 5, 2
 
     secret_key1, shares1 = generate_shares(n, f)
@@ -184,3 +171,75 @@ def test_signature_invalid_for_wrong_key():
 
     wrong_key = shares2[0].public_key
     assert not verify_signature(message, signature, wrong_key)
+
+
+# ---------------------------------------------------------------------------
+# Blind signing
+# ---------------------------------------------------------------------------
+
+
+def test_blind_sign_end_to_end():
+    n, f = 5, 2
+    _sk, shares = generate_shares(n, f)
+    pk = shares[0].public_key
+
+    message = b"token-public-key-bytes"
+    r = generate_blinding_factor()
+
+    # Client blinds
+    blinded = blind_message(message, r)
+
+    # f+1 servers each partially sign the blinded point
+    partial_sigs = [partial_blind_sign(blinded, share) for share in shares[: f + 1]]
+
+    # Client combines and unblinds
+    combined_blind = combine_partial_signatures(partial_sigs)
+    signature = unblind_signature(combined_blind, r)
+
+    # Resulting signature is a valid BLS signature on the original message
+    assert verify_signature(message, signature, pk)
+
+
+def test_blind_sign_different_blinding_factors():
+    n, f = 5, 2
+    _sk, shares = generate_shares(n, f)
+
+    message = b"same-message"
+    r1 = generate_blinding_factor()
+    r2 = generate_blinding_factor()
+
+    def blind_sign_flow(r):
+        blinded = blind_message(message, r)
+        partials = [partial_blind_sign(blinded, s) for s in shares[: f + 1]]
+        combined = combine_partial_signatures(partials)
+        return unblind_signature(combined, r)
+
+    sig1 = blind_sign_flow(r1)
+    sig2 = blind_sign_flow(r2)
+
+    assert sig1 == sig2
+
+
+def test_blinded_points_are_unlinkable():
+    message = b"token-pk"
+    r1 = generate_blinding_factor()
+    r2 = generate_blinding_factor()
+
+    b1 = blind_message(message, r1)
+    b2 = blind_message(message, r2)
+
+    assert b1 != b2
+
+
+def test_blind_signature_invalid_for_wrong_message():
+    n, f = 5, 2
+    _sk, shares = generate_shares(n, f)
+    pk = shares[0].public_key
+
+    r = generate_blinding_factor()
+    blinded = blind_message(b"real-message", r)
+    partials = [partial_blind_sign(blinded, s) for s in shares[: f + 1]]
+    combined = combine_partial_signatures(partials)
+    signature = unblind_signature(combined, r)
+
+    assert not verify_signature(b"other-message", signature, pk)
