@@ -1,3 +1,4 @@
+import os
 import secrets
 
 from py_ecc.bls.ciphersuites import G2Basic, hash_to_G2
@@ -112,6 +113,22 @@ def generate_shares(n: int, f: int) -> tuple[int, list[KeyShare]]:
         )
         for i in range(1, n + 1)
     ]
+
+
+def generate_shares_to_files(n: int, f: int, shares_dir: str) -> None:
+    """Generate shares and save them to files.
+
+    Args:
+        n: Total number of shares.
+        f: Polynomial degree (threshold = f+1).
+        shares_dir: Directory to save shares.
+    """
+    secret_key, shares = generate_shares(n, f)
+    for i, share in enumerate(shares):
+        with open(os.path.join(shares_dir, f"share_{i}.bin"), "wb") as f:
+            f.write(share.model_dump_json().encode())
+    with open(os.path.join(shares_dir, "system_public_key.bin"), "wb") as f:
+        f.write(shares[0].public_key.model_dump_json().encode())
 
 
 def partial_sign(message: bytes, key_share: KeyShare) -> PartialSignature:
@@ -264,3 +281,7 @@ def sign_message(message: bytes, private_key: int) -> G2_Point:
     message_point = hash_to_G2(message, G2Basic.DST, G2Basic.xmd_hash_function)
     signature = multiply(message_point, private_key)
     return G2_Point.from_g2(signature)
+
+
+if __name__ == "__main__":
+    generate_shares_to_files(5, 2, "shares")

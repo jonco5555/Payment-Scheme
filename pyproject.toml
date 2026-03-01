@@ -12,10 +12,13 @@ dependencies = [
     "httpx>=0.28.1",
     "py-ecc>=8.0.0",
     "pydantic>=2.12.5",
+    "pyyaml>=6.0.3",
+    "typer>=0.15.0",
+    "uvicorn>=0.34.0",
 ]
 
 [project.scripts]
-payment = "payment:main"
+payment = "payment.cli:app"
 
 [build-system]
 requires = ["uv_build>=0.8.17,<0.9.0"]

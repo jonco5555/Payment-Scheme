@@ -1,0 +1,18 @@
+system:
+  public_key_path: config/system_public_key.bin
+  servers: 5
+  failures: 2
+  clients: 5
+  initial_balance: 100
+
+servers:
+  - id: 0
+    address: http://localhost:8000
+  - id: 1
+    address: http://localhost:8001
+  - id: 2
+    address: http://localhost:8002
+  - id: 3
+    address: http://localhost:8003
+  - id: 4
+    address: http://localhost:8004
