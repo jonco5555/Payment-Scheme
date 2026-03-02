@@ -24,7 +24,7 @@ from payment.models import (
 
 class Client:
     def __init__(
-        self, id: str, system_public_key: G1_Point, servers: list[str]
+        self, id: str, system_public_key: G1_Point, servers: list[str], f: int
     ) -> None:
         self._logger = logging.getLogger(__name__)
         self._id = id
@@ -34,6 +34,7 @@ class Client:
         self._server_urls = servers
         self._tokens: list[ClientToken] = []
         self._pending_keys: dict[G1_Point, int] = {}
+        self._threshold = f + 1
 
     async def start(self) -> None:
         await self.register()
@@ -42,70 +43,75 @@ class Client:
         await self.unregister()
         await self._client.aclose()
 
-    async def register(self) -> None:
-        """Register this client's public key with all servers."""
-        self._logger.info(
-            f"{self._id} registering with {len(self._server_urls)} servers"
-        )
-        request = RegistrationRequest(id=self._id, public_key=self._public_key)
+    async def _broadcast(
+        self,
+        endpoint: str,
+        data: dict | str,
+    ) -> list[httpx.Response]:
+        """Send a request to all servers and collect a quorum of successful responses.
+
+        Waits for responses as they arrive. Returns as soon as f+1 servers
+        have replied with HTTP 200, cancelling any still-pending requests.
+        Raises RuntimeError if a quorum cannot be reached.
+        """
+
         tasks = [
-            self._client.post(f"{url}/register", json=request.model_dump(mode="json"))
+            asyncio.create_task(self._client.post(f"{url}/{endpoint}", json=data))
             for url in self._server_urls
         ]
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
-        failures = [
-            r for r in responses if isinstance(r, Exception) or r.status_code != 200
-        ]
-        if failures:
-            self._logger.error(f"Failures: {failures}")
-            self._logger.error(
-                f"{self._id} failed to register with {len(failures)} servers"
+
+        successes: list[httpx.Response] = []
+        pending = set(tasks)
+
+        while pending:
+            done, pending = await asyncio.wait(
+                pending, return_when=asyncio.FIRST_COMPLETED
             )
+            for task in done:
+                try:
+                    response = task.result()
+                    if response.status_code == httpx.codes.OK:
+                        successes.append(response)
+                    else:
+                        self._logger.warning(
+                            f"{self._id} {endpoint}: server returned {response.status_code}"
+                        )
+                except Exception as e:
+                    self._logger.warning(
+                        f"{self._id} {endpoint}: server request failed: {e}"
+                    )
+
+            if len(successes) >= self._threshold:
+                break  # enough responses
+
+            if len(successes) + len(pending) < self._threshold:
+                break  # won't get enough valid responses
+
+        for task in pending:
+            task.cancel()  # cancel any still-pending requests (may be omission errors)
+
+        if len(successes) < self._threshold:
             raise RuntimeError(
-                f"Registration failed on {len(failures)}/{len(self._server_urls)} servers"
+                f"{self._id} {endpoint}: got {len(successes)} successful responses, need at least {self._threshold}"
             )
-        self._logger.info(f"{self._id} registered successfully with all servers")
+
+        return successes
+
+    async def register(self) -> None:
+        self._logger.info(f"{self._id} registering")
+
+        request = RegistrationRequest(id=self._id, public_key=self._public_key)
+        await self._broadcast("register", request.model_dump(mode="json"))
+
+        self._logger.info(f"{self._id} registered successfully")
 
     async def unregister(self) -> None:
-        """Unregister this client from all servers."""
-        self._logger.info(
-            f"{self._id} unregistering from {len(self._server_urls)} servers"
-        )
-        request = UnregistrationRequest(id=self._id)
-        tasks = [
-            self._client.post(f"{url}/unregister", json=request.model_dump(mode="json"))
-            for url in self._server_urls
-        ]
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
-        failures = [
-            r for r in responses if isinstance(r, Exception) or r.status_code != 200
-        ]
-        if failures:
-            self._logger.error(f"Failures: {failures}")
-            self._logger.error(
-                f"{self._id} failed to unregister from {len(failures)} servers"
-            )
-            raise RuntimeError(
-                f"Unregistration failed on {len(failures)}/{len(self._server_urls)} servers"
-            )
-        self._logger.info(f"{self._id} unregistered successfully from all servers")
+        self._logger.info(f"{self._id} unregistering")
 
-    async def wait_for_servers_ready(self) -> None:
-        """Poll all servers until they report all clients have registered."""
-        self._logger.info(f"{self._id} waiting for all servers to be ready")
-        while True:
-            tasks = [self._client.get(f"{url}/ready") for url in self._server_urls]
-            responses = await asyncio.gather(*tasks, return_exceptions=True)
-            all_ready = all(
-                not isinstance(r, Exception)
-                and r.status_code == 200
-                and r.json().get("ready")
-                for r in responses
-            )
-            if all_ready:
-                break
-            await asyncio.sleep(1)
-        self._logger.info(f"{self._id} all servers are ready")
+        request = UnregistrationRequest(id=self._id)
+        await self._broadcast("unregister", request.model_dump(mode="json"))
+
+        self._logger.info(f"{self._id} unregistered successfully")
 
     def generate_payment_key(self) -> G1_Point:
         pk, sk = create_fresh_key_pair()
@@ -115,65 +121,47 @@ class Client:
     async def mint_request(self) -> None:
         self._logger.info(f"{self._id} issuing a mint request")
 
-        sk, payload, signed_mint_request = await self.prepare_mint()
+        sk, payload, signed_mint_request = await self._prepare_mint()
 
-        tasks = [
-            self._client.post(f"{url}/mint", json=signed_mint_request.model_dump_json())
-            for url in self._server_urls
-        ]
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
-
-        self._logger.info(
-            f"{self._id} received {len(responses)} responses for mint request"
+        responses = await self._broadcast(
+            "mint", signed_mint_request.model_dump(mode="json")
         )
 
-        # TODO: Check if we have enough non-error responses
         # TODO: Handle client balance here
 
-        await self.process_mint_responses(sk, payload, responses)
+        await self._process_mint_responses(sk, payload, responses)
 
         self._logger.info(f"{self._id} mint request completed")
 
     async def pay_request(self, recipient_id: str, recipient_address: str) -> None:
         self._logger.info(f"{self._id} issuing a pay request to {recipient_id}")
 
-        async with self._client.post(
-            f"{recipient_address}/payment-key"
-        ) as key_response:
-            if key_response.status_code != httpx.codes.OK:
-                self._logger.error(
-                    f"{self._id} failed to get payment key from {recipient_address}"
-                )
-                raise ValueError()
-            recipient_public_key = G1_Point.model_validate_json(key_response.content)
-            self._logger.info(
-                f"{self._id} received payment key from {recipient_address}"
+        key_response = await self._client.post(f"{recipient_address}/payment-key")
+        if key_response.status_code != httpx.codes.OK:
+            raise ValueError(
+                f"{self._id} failed to get payment key from {recipient_address}"
             )
 
-        client_token, recipient_payload, signed_tx = await self.prepare_pay(
+        recipient_public_key = G1_Point.model_validate_json(key_response.content)
+        self._logger.info(f"{self._id} received payment key from {recipient_address}")
+
+        client_token, recipient_payload, signed_tx = await self._prepare_pay(
             recipient_id, recipient_public_key
         )
 
-        tasks = [
-            self._client.post(f"{url}/pay", json=signed_tx.model_dump_json())
-            for url in self._server_urls
-        ]
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            responses = await self._broadcast("pay", signed_tx.model_dump(mode="json"))
+        except RuntimeError:
+            self._tokens.insert(0, client_token)
+            raise
 
-        self._logger.info(
-            f"{self._id} received {len(responses)} responses for pay request"
-        )
-
-        # TODO: Check if we have enough non-error responses
-        # TODO: if not enough responses, return the token to the list
-
-        await self.process_pay_responses(
+        await self._process_pay_responses(
             recipient_payload, recipient_address, responses
         )
 
         self._logger.info(f"{self._id} pay request to {recipient_id} completed")
 
-    async def prepare_mint(self) -> tuple[int, bytes, SignedMintRequest]:
+    async def _prepare_mint(self) -> tuple[int, bytes, SignedMintRequest]:
         pk, sk = create_fresh_key_pair()
         mint_request = MintRequest(id=self._id, public_key=pk)
         payload = mint_request.model_dump_json().encode()
@@ -181,7 +169,7 @@ class Client:
         signed_mint_request = SignedMintRequest(payload=payload, signature=signature)
         return sk, payload, signed_mint_request
 
-    async def process_mint_responses(
+    async def _process_mint_responses(
         self, sk: int, payload: bytes, responses: list[httpx.Response]
     ) -> None:
         partial_signatures = [
@@ -195,7 +183,7 @@ class Client:
             )
         )
 
-    async def prepare_pay(
+    async def _prepare_pay(
         self, recipient_id: str, recipient_public_key: G1_Point
     ) -> tuple[ClientToken, bytes, SignedTransaction]:
         if not self._tokens:
@@ -214,7 +202,7 @@ class Client:
         signed_tx = SignedTransaction(payload=payload, signature=signature)
         return client_token, recipient_payload, signed_tx
 
-    async def process_pay_responses(
+    async def _process_pay_responses(
         self,
         recipient_payload: bytes,
         recipient_address: str,
@@ -226,29 +214,26 @@ class Client:
         ]
         signature = combine_partial_signatures(partial_signatures)
         token = Token(payload=recipient_payload, signature=signature)
-        async with self._client.post(
-            f"{recipient_address}/pay", json=token.model_dump_json()
-        ) as response:
-            if response.status_code != httpx.codes.OK:
-                self._logger.error(
-                    f"{self._id} failed to send payment to {recipient_address}"
-                )
-                raise ValueError()
-            self._logger.info(
-                f"{self._id} payment sent successfully to {recipient_address}"
+        response = await self._client.post(
+            f"{recipient_address}/pay", json=token.model_dump(mode="json")
+        )
+        if response.status_code != httpx.codes.OK:
+            raise ValueError(
+                f"{self._id} failed to send payment to {recipient_address}"
             )
+        self._logger.info(
+            f"{self._id} payment sent successfully to {recipient_address}"
+        )
 
     async def receive_payment(self, token: Token) -> None:
         if not verify_signature(
             token.payload, token.signature, self._system_public_key
         ):
-            self._logger.error(f"{self._id} invalid token signature")
-            raise ValueError()
+            raise ValueError(f"{self._id} invalid token signature")
 
         mint_request = MintRequest.model_validate_json(token.payload)
         if mint_request.public_key not in self._pending_keys:
-            self._logger.error(f"{self._id} no pending key for this payment")
-            raise ValueError()
+            raise ValueError(f"{self._id} no pending key for this payment")
 
         sk = self._pending_keys.pop(mint_request.public_key)
         self._tokens.append(ClientToken(token=token, secret_key=sk))

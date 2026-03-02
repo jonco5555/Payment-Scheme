@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from payment.crypto.models import G1_Point, G2_Point
 
@@ -14,6 +14,8 @@ class SignedMintRequest(BaseModel):
 
 
 class Token(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     payload: bytes  # MintRequest
     signature: G2_Point
 

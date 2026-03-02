@@ -1,0 +1,160 @@
+services:
+  server-0:
+    build: .
+    image: payment:latest
+    command: payment server
+    environment:
+      SERVER_ID: "0"
+      CONFIG_PATH: /app/config/config.docker.yaml
+      KEY_SHARE_PATH: /app/config/share_0.bin
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - payment-net
+
+  server-1:
+    image: payment:latest
+    command: payment server
+    environment:
+      SERVER_ID: "1"
+      CONFIG_PATH: /app/config/config.docker.yaml
+      KEY_SHARE_PATH: /app/config/share_1.bin
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - payment-net
+    depends_on:
+      - server-0
+
+  server-2:
+    image: payment:latest
+    command: payment server
+    environment:
+      SERVER_ID: "2"
+      CONFIG_PATH: /app/config/config.docker.yaml
+      KEY_SHARE_PATH: /app/config/share_2.bin
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - payment-net
+    depends_on:
+      - server-0
+
+  server-3:
+    image: payment:latest
+    command: payment server
+    environment:
+      SERVER_ID: "3"
+      CONFIG_PATH: /app/config/config.docker.yaml
+      KEY_SHARE_PATH: /app/config/share_3.bin
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - payment-net
+    depends_on:
+      - server-0
+  server-4:
+    image: payment:latest
+    command: payment server
+    environment:
+      SERVER_ID: "4"
+      CONFIG_PATH: /app/config/config.docker.yaml
+      KEY_SHARE_PATH: /app/config/share_4.bin
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - payment-net
+    depends_on:
+      - server-0
+  client-0:
+    image: payment:latest
+    command: payment client
+    environment:
+      CLIENT_ID: "0"
+      CONFIG_PATH: /app/config/config.docker.yaml
+      PORT: "9000"
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - payment-net
+    depends_on:
+      - server-0
+      - server-1
+      - server-2
+      - server-3
+      - server-4
+
+  client-1:
+    image: payment:latest
+    command: payment client
+    environment:
+      CLIENT_ID: "1"
+      CONFIG_PATH: /app/config/config.docker.yaml
+      PORT: "9001"
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - payment-net
+    depends_on:
+      - server-0
+      - server-1
+      - server-2
+      - server-3
+      - server-4
+
+  client-2:
+    image: payment:latest
+    command: payment client
+    environment:
+      CLIENT_ID: "2"
+      CONFIG_PATH: /app/config/config.docker.yaml
+      PORT: "9002"
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - payment-net
+    depends_on:
+      - server-0
+      - server-1
+      - server-2
+      - server-3
+      - server-4
+
+  client-3:
+    image: payment:latest
+    command: payment client
+    environment:
+      CLIENT_ID: "3"
+      CONFIG_PATH: /app/config/config.docker.yaml
+      PORT: "9003"
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - payment-net
+    depends_on:
+      - server-0
+      - server-1
+      - server-2
+      - server-3
+      - server-4
+
+  client-4:
+    image: payment:latest
+    command: payment interactive-client
+    environment:
+      CLIENT_ID: "4"
+      CONFIG_PATH: /app/config/config.docker.yaml
+      PORT: "9004"
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - payment-net
+    depends_on:
+      - server-0
+      - server-1
+      - server-2
+      - server-3
+      - server-4
+
+networks:
+  payment-net:

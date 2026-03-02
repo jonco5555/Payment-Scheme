@@ -30,6 +30,7 @@ def setup(
 def client(
     id: Annotated[str, typer.Option(envvar="CLIENT_ID")],
     config_path: Annotated[str, typer.Option(envvar="CONFIG_PATH")],
+    port: Annotated[int, typer.Option(envvar="PORT")],
 ) -> None:
     from payment.client.__main__ import main
 
@@ -44,6 +45,8 @@ def client(
             id=id,
             system_public_key=system_public_key,
             servers=servers,
+            f=config.system.failures,
+            port=port,
         )
     )
 
@@ -76,3 +79,30 @@ def server(
             port=port,
         )
     )
+
+
+@app.command()
+def interactive_client(
+    id: Annotated[str, typer.Option(envvar="CLIENT_ID")],
+    config_path: Annotated[str, typer.Option(envvar="CONFIG_PATH")],
+) -> None:
+    from payment.client.__main__ import interactive_main
+
+    config = load_config(config_path)
+
+    with open(config.system.public_key_path, "rb") as f:
+        system_public_key = G1_Point.model_validate_json(f.read())
+
+    servers = [server.address for server in config.servers]
+    asyncio.run(
+        interactive_main(
+            id=id,
+            system_public_key=system_public_key,
+            servers=servers,
+            f=config.system.failures,
+        )
+    )
+
+
+if __name__ == "__main__":
+    app()

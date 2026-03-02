@@ -1,0 +1,18 @@
+system:
+  public_key_path: /app/config/system_public_key.bin
+  servers: 5
+  failures: 2
+  clients: 5
+  initial_balance: 100
+
+servers:
+  - id: 0
+    address: http://server-0:8000
+  - id: 1
+    address: http://server-1:8000
+  - id: 2
+    address: http://server-2:8000
+  - id: 3
+    address: http://server-3:8000
+  - id: 4
+    address: http://server-4:8000

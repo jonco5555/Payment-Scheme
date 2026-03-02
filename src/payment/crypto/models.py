@@ -1,9 +1,10 @@
 from py_ecc.optimized_bls12_381 import FQ, FQ2, normalize
 from py_ecc.typing import Optimized_Field, Optimized_Point3D
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class G1_Point(BaseModel):
+    model_config = ConfigDict(frozen=True)
     x: int
     y: int
 
@@ -17,6 +18,8 @@ class G1_Point(BaseModel):
 
 
 class FQ2_Point(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     c0: int
     c1: int
 
@@ -29,6 +32,8 @@ class FQ2_Point(BaseModel):
 
 
 class G2_Point(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     x: FQ2_Point
     y: FQ2_Point
 
