@@ -37,6 +37,14 @@ class Server:
         self._all_registered = asyncio.Event()
 
     async def handle_register(self, request: RegistrationRequest) -> None:
+        """Register a client and wait until all expected clients have joined.
+
+        Args:
+            request: Registration request with client id and public key.
+
+        Raises:
+            ValueError: If the client is already registered or max clients reached.
+        """
         if request.id in self._clients:
             raise ValueError(f"Client already registered: {request.id}")
         if len(self._clients) >= self._num_clients:
@@ -56,6 +64,14 @@ class Server:
         await self._all_registered.wait()
 
     async def handle_unregister(self, request: UnregistrationRequest) -> None:
+        """Remove a client from the list of registered clients.
+
+        Args:
+            request: Unregistration request with client id.
+
+        Raises:
+            ValueError: If the client is not registered.
+        """
         if request.id not in self._clients:
             raise ValueError(f"Client not registered: {request.id}")
         del self._clients[request.id]
@@ -65,6 +81,20 @@ class Server:
         )
 
     async def handle_mint(self, request: SignedMintRequest) -> PartialSignature:
+        """Validate a mint request and return a partial signature on the payload.
+
+        Checks client identity, balance, signature, and public-key uniqueness
+        before issuing the partial signature.
+
+        Args:
+            request: Signed mint request from a client.
+
+        Returns:
+            Partial BLS signature on the mint payload.
+
+        Raises:
+            ValueError: If validation fails (unknown client, bad signature, etc.).
+        """
         mint_request = MintRequest.model_validate_json(request.payload)
         if mint_request.id not in self._clients:
             raise ValueError(f"Unknown client: {mint_request.id}")
@@ -95,6 +125,21 @@ class Server:
         return partial_sign(request.payload, self._key_share)
 
     async def handle_pay(self, request: SignedTransaction) -> PartialSignature:
+        """Validate a pay transaction and return a partial signature for the recipient.
+
+        Verifies the token signature, checks for double-spending, and verifies
+        the transaction signature before issuing a partial signature on the
+        recipient's mint payload.
+
+        Args:
+            request: Signed transaction from the paying client.
+
+        Returns:
+            Partial BLS signature on the recipient's mint payload.
+
+        Raises:
+            ValueError: If the token was already spent or signatures are invalid.
+        """
         transaction = Transaction.model_validate_json(request.payload)
         mint_request = MintRequest.model_validate_json(transaction.token.payload)
 

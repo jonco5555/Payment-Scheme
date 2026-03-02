@@ -15,7 +15,6 @@ app = typer.Typer()
 def setup(
     config_path: Annotated[str, typer.Option(envvar="CONFIG_PATH")],
 ) -> None:
-
     config = load_config(config_path)
     shares_dir = os.path.dirname(config_path)
     generate_shares_to_files(
