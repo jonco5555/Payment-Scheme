@@ -281,7 +281,3 @@ def sign_message(message: bytes, private_key: int) -> G2_Point:
     message_point = hash_to_G2(message, G2Basic.DST, G2Basic.xmd_hash_function)
     signature = multiply(message_point, private_key)
     return G2_Point.from_g2(signature)
-
-
-if __name__ == "__main__":
-    generate_shares_to_files(5, 2, "shares")
