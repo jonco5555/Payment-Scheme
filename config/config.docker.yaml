@@ -4,6 +4,7 @@ system:
   failures: 2
   clients: 5
   initial_balance: 100
+  delta: 5.0
 
 servers:
   - id: 0

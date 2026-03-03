@@ -45,6 +45,7 @@ class SystemConfig(BaseModel):
     failures: int
     clients: int
     initial_balance: int
+    delta: float
 
 
 class ServerConfig(BaseModel):

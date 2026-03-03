@@ -32,23 +32,13 @@ class Client:
         servers: list[str],
         f: int,
         initial_balance: int,
+        timeout: float,
     ) -> None:
-        """Initialize a payment client.
-
-        Generates a fresh key pair on creation.
-
-        Args:
-            id: Unique client identifier.
-            system_public_key: System-wide BLS public key for verifying tokens.
-            servers: List of server base URLs.
-            f: Max number of faulty servers (threshold = f + 1).
-            initial_balance: Starting balance for minting tokens.
-        """
         self._logger = logging.getLogger(__name__)
         self._id = id
         self._system_public_key = system_public_key
         self._public_key, self._private_key = create_fresh_key_pair()
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(None, connect=5.0))
+        self._client = httpx.AsyncClient(timeout=timeout)
         self._server_urls = servers
         self._tokens: list[ClientToken] = []
         self._pending_keys: dict[G1_Point, tuple[int, int]] = {}
@@ -59,7 +49,10 @@ class Client:
         await self.register()
 
     async def stop(self) -> None:
-        await self.unregister()
+        try:
+            await self.unregister()
+        except RuntimeError:
+            pass
         await self._client.aclose()
 
     async def _broadcast(
@@ -89,34 +82,18 @@ class Client:
         ]
 
         successes: list[httpx.Response] = []
-        pending = set(tasks)
-
-        while pending:
-            done, pending = await asyncio.wait(
-                pending, return_when=asyncio.FIRST_COMPLETED
-            )
-            for task in done:
-                try:
-                    response = task.result()
-                    if response.status_code == httpx.codes.OK:
-                        successes.append(response)
-                    else:
-                        self._logger.warning(
-                            f"{self._id} {endpoint}: server returned {response.status_code}"
-                        )
-                except Exception as e:
-                    self._logger.warning(
-                        f"{self._id} {endpoint}: server request failed: {e}"
-                    )
-
-            if len(successes) >= self._threshold:
-                break  # enough responses
-
-            if len(successes) + len(pending) < self._threshold:
-                break  # won't get enough valid responses
-
-        for task in pending:
-            task.cancel()  # cancel any still-pending requests (may be omission errors)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                self._logger.warning(
+                    f"{self._id} {endpoint}: server request failed: {result}"
+                )
+            elif result.status_code != httpx.codes.OK:
+                self._logger.warning(
+                    f"{self._id} {endpoint}: server returned {result.status_code}"
+                )
+            else:
+                successes.append(result)
 
         if len(successes) < self._threshold:
             raise RuntimeError(
