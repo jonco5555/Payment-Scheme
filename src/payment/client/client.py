@@ -6,9 +6,11 @@ import httpx
 from payment.client.models import ClientToken
 from payment.crypto.models import G1_Point, PartialSignature
 from payment.crypto.shares import (
+    blind_point,
     combine_partial_signatures,
     create_fresh_key_pair,
     sign_message,
+    unblind_signature,
     verify_signature,
 )
 from payment.models import (
@@ -49,7 +51,7 @@ class Client:
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(None, connect=5.0))
         self._server_urls = servers
         self._tokens: list[ClientToken] = []
-        self._pending_keys: dict[G1_Point, int] = {}
+        self._pending_keys: dict[G1_Point, tuple[int, int]] = {}
         self._threshold = f + 1
         self._balance = initial_balance
 
@@ -154,7 +156,8 @@ class Client:
         """
 
         pk, sk = create_fresh_key_pair()
-        self._pending_keys[pk] = sk
+        pk, r = blind_point(pk)
+        self._pending_keys[pk] = (sk, r)
         return pk
 
     async def mint_request(self) -> None:
@@ -169,14 +172,14 @@ class Client:
         if self._balance < 1:
             raise ValueError(f"{self._id} insufficient balance")
 
-        sk, payload, signed_mint_request = await self._prepare_mint()
+        sk, payload, signed_mint_request, blinding_factor = await self._prepare_mint()
 
         responses = await self._broadcast(
             "mint", signed_mint_request.model_dump(mode="json")
         )
 
         self._balance -= 1
-        await self._process_mint_responses(sk, payload, responses)
+        await self._process_mint_responses(sk, payload, responses, blinding_factor)
 
         self._logger.info(f"{self._id} mint request completed")
 
@@ -221,22 +224,27 @@ class Client:
 
         self._logger.info(f"{self._id} pay request to {recipient_id} completed")
 
-    async def _prepare_mint(self) -> tuple[int, bytes, SignedMintRequest]:
+    async def _prepare_mint(self) -> tuple[int, bytes, SignedMintRequest, int]:
         """Build and sign a mint request with a fresh key pair.
 
         Returns:
-            Tuple of (secret_key, raw_payload, signed_request).
+            Tuple of (secret_key, raw_payload, signed_request, blinding_factor).
         """
 
         pk, sk = create_fresh_key_pair()
+        pk, r = blind_point(pk)
         mint_request = MintRequest(id=self._id, public_key=pk)
         payload = mint_request.model_dump_json().encode()
         signature = sign_message(payload, self._private_key)
         signed_mint_request = SignedMintRequest(payload=payload, signature=signature)
-        return sk, payload, signed_mint_request
+        return sk, payload, signed_mint_request, r
 
     async def _process_mint_responses(
-        self, sk: int, payload: bytes, responses: list[httpx.Response]
+        self,
+        sk: int,
+        payload: bytes,
+        responses: list[httpx.Response],
+        blinding_factor: int,
     ) -> None:
         """Combine server partial signatures into a token and store it.
 
@@ -244,6 +252,7 @@ class Client:
             sk: Secret key corresponding to the token's public key.
             payload: Raw mint request payload that was signed.
             responses: Successful HTTP responses containing partial signatures.
+            blinding_factor: Blinding factor used to blind the public key.
         """
 
         partial_signatures = [
@@ -251,6 +260,7 @@ class Client:
             for response in responses
         ]
         signature = combine_partial_signatures(partial_signatures)
+        signature = unblind_signature(signature, blinding_factor)
         self._tokens.append(
             ClientToken(
                 token=Token(payload=payload, signature=signature), secret_key=sk
@@ -345,5 +355,8 @@ class Client:
         if mint_request.public_key not in self._pending_keys:
             raise ValueError(f"{self._id} no pending key for this payment")
 
-        sk = self._pending_keys.pop(mint_request.public_key)
+        sk, r = self._pending_keys.pop(mint_request.public_key)
+        token = Token(
+            payload=token.payload, signature=unblind_signature(token.signature, r)
+        )
         self._tokens.append(ClientToken(token=token, secret_key=sk))
