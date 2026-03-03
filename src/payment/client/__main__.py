@@ -5,6 +5,7 @@ import uvicorn
 from payment.client.app import create_app
 from payment.client.client import Client
 from payment.crypto.models import G1_Point
+from payment.utils import configure_logging
 
 
 def handler(sig, frame):
@@ -20,6 +21,7 @@ async def main(
     initial_balance: int,
     timeout: float,
 ) -> None:
+    configure_logging()
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGTERM, handler)
 
@@ -46,6 +48,7 @@ async def interactive_main(
     f: int,
     initial_balance: int,
 ) -> None:
+    configure_logging()
     client = Client(
         id=id,
         system_public_key=system_public_key,
