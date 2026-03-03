@@ -6,13 +6,19 @@ from payment.crypto.models import G1_Point
 
 
 async def main(
-    id: str, system_public_key: G1_Point, servers: list[str], f: int, port: int
+    id: str,
+    system_public_key: G1_Point,
+    servers: list[str],
+    f: int,
+    port: int,
+    initial_balance: int,
 ) -> None:
     client = Client(
         id=id,
         system_public_key=system_public_key,
         servers=servers,
         f=f,
+        initial_balance=initial_balance,
     )
     fastapi_app = create_app(client)
     config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=port)
@@ -24,13 +30,18 @@ async def main(
 
 
 async def interactive_main(
-    id: str, system_public_key: G1_Point, servers: list[str], f: int
+    id: str,
+    system_public_key: G1_Point,
+    servers: list[str],
+    f: int,
+    initial_balance: int,
 ) -> None:
     client = Client(
         id=id,
         system_public_key=system_public_key,
         servers=servers,
         f=f,
+        initial_balance=initial_balance,
     )
     # fastapi_app = create_app(client)
     # config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=port)

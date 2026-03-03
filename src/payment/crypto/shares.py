@@ -20,6 +20,7 @@ def generate_polynomial(degree: int) -> list[int]:
     Returns:
         List of coefficients [a_0, a_1, ..., a_degree].
     """
+
     return [secrets.randbelow(curve_order - 1) + 1 for _ in range(degree + 1)]
 
 
@@ -35,6 +36,7 @@ def evaluate_polynomial(coeffs: list[int], x: int) -> int:
     Returns:
         g(x) mod q.
     """
+
     result = 0
     for a in reversed(coeffs):
         result = (result * x + a) % curve_order
@@ -54,6 +56,7 @@ def lagrange_coefficient(i: int, points: list[int]) -> int:
     Returns:
         Lagrange coefficient λ_i mod q.
     """
+
     num = 1
     den = 1
     for j in points:
@@ -76,6 +79,7 @@ def reconstruct_secret(shares: list[KeyShare]) -> int:
     Returns:
         Reconstructed secret g(0) mod q.
     """
+
     return (
         sum(
             share.share
@@ -102,6 +106,7 @@ def generate_shares(n: int, f: int) -> tuple[int, list[KeyShare]]:
     Returns:
         Tuple of (secret_key, shares).
     """
+
     coeffs = generate_polynomial(f)
     secret_key = coeffs[0]
     public_key = multiply(G1, secret_key)
@@ -123,7 +128,8 @@ def generate_shares_to_files(n: int, f: int, shares_dir: str) -> None:
         f: Polynomial degree (threshold = f+1).
         shares_dir: Directory to save shares.
     """
-    secret_key, shares = generate_shares(n, f)
+
+    _, shares = generate_shares(n, f)
     for i, share in enumerate(shares):
         with open(os.path.join(shares_dir, f"share_{i}.bin"), "wb") as f:
             f.write(share.model_dump_json().encode())
@@ -141,6 +147,7 @@ def partial_sign(message: bytes, key_share: KeyShare) -> PartialSignature:
     Returns:
         PartialSignature with id and signature point in G2.
     """
+
     message_point = hash_to_G2(message, G2Basic.DST, G2Basic.xmd_hash_function)
     signature = multiply(message_point, key_share.share)
     return PartialSignature(id=key_share.id, signature=G2_Point.from_g2(signature))
@@ -158,6 +165,7 @@ def combine_partial_signatures(partial_signatures: list[PartialSignature]) -> G2
     Returns:
         Combined signature as G2_Point.
     """
+
     ids = [p.id for p in partial_signatures]
     signature = Z2
     for p in partial_signatures:
@@ -177,6 +185,7 @@ def verify_signature(message: bytes, signature: G2_Point, public_key: G1_Point) 
     Returns:
         True if signature is valid, False otherwise.
     """
+
     message_point = hash_to_G2(message, G2Basic.DST, G2Basic.xmd_hash_function)
 
     lhs = pairing(signature.to_g2(), G1)
@@ -194,6 +203,7 @@ def generate_blinding_factor() -> int:
     Returns:
         Random non-zero scalar in [1, q).
     """
+
     r = secrets.randbelow(curve_order - 1) + 1  # avoid r = 0
     return r
 
@@ -212,6 +222,7 @@ def blind_message(message: bytes, blinding_factor: int) -> G2_Point:
     Returns:
         Blinded message point M' ∈ G2.
     """
+
     h = hash_to_G2(message, G2Basic.DST, G2Basic.xmd_hash_function)
     blinded = multiply(h, blinding_factor)
     return G2_Point.from_g2(blinded)
@@ -234,6 +245,7 @@ def partial_blind_sign(
     Returns:
         Partial blind signature with server id and σ'_i ∈ G2.
     """
+
     sig = multiply(blinded_point.to_g2(), key_share.share)
     return PartialSignature(id=key_share.id, signature=G2_Point.from_g2(sig))
 
@@ -256,6 +268,7 @@ def unblind_signature(blinded_signature: G2_Point, blinding_factor: int) -> G2_P
     Returns:
         Unblinded BLS signature σ ∈ G2, valid under the system public key.
     """
+
     r_inv = pow(blinding_factor, curve_order - 2, curve_order)
     sig = multiply(blinded_signature.to_g2(), r_inv)
     return G2_Point.from_g2(sig)
@@ -267,6 +280,7 @@ def create_fresh_key_pair() -> tuple[G1_Point, int]:
     Returns:
         Tuple of (public key, private key).
     """
+
     private_key = secrets.randbelow(curve_order - 1) + 1
     public_key = multiply(G1, private_key)
     return G1_Point.from_g1(public_key), private_key
@@ -278,6 +292,7 @@ def sign_message(message: bytes, private_key: int) -> G2_Point:
     Returns:
         Signature as G2_Point.
     """
+
     message_point = hash_to_G2(message, G2Basic.DST, G2Basic.xmd_hash_function)
     signature = multiply(message_point, private_key)
     return G2_Point.from_g2(signature)

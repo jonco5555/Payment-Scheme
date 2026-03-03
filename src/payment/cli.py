@@ -46,6 +46,7 @@ def client(
             servers=servers,
             f=config.system.failures,
             port=port,
+            initial_balance=config.system.initial_balance,
         )
     )
 
@@ -99,6 +100,7 @@ def interactive_client(
             system_public_key=system_public_key,
             servers=servers,
             f=config.system.failures,
+            initial_balance=config.system.initial_balance,
         )
     )
 

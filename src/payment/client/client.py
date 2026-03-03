@@ -125,6 +125,7 @@ class Client:
 
     async def register(self) -> None:
         """Broadcast a registration request to all servers."""
+
         self._logger.info(f"{self._id} registering")
 
         request = RegistrationRequest(id=self._id, public_key=self._public_key)
@@ -134,6 +135,7 @@ class Client:
 
     async def unregister(self) -> None:
         """Broadcast an unregistration request to all servers."""
+
         self._logger.info(f"{self._id} unregistering")
 
         request = UnregistrationRequest(id=self._id)
@@ -150,6 +152,7 @@ class Client:
         Returns:
             Public key to give to the sender.
         """
+
         pk, sk = create_fresh_key_pair()
         self._pending_keys[pk] = sk
         return pk
@@ -160,6 +163,7 @@ class Client:
         Raises:
             ValueError: If balance is insufficient.
         """
+
         self._logger.info(f"{self._id} issuing a mint request")
 
         if self._balance < 1:
@@ -189,6 +193,7 @@ class Client:
         Raises:
             ValueError: If no tokens are available or recipient is unreachable.
         """
+
         self._logger.info(f"{self._id} issuing a pay request to {recipient_id}")
 
         key_response = await self._client.post(f"{recipient_address}/payment-key")
@@ -222,6 +227,7 @@ class Client:
         Returns:
             Tuple of (secret_key, raw_payload, signed_request).
         """
+
         pk, sk = create_fresh_key_pair()
         mint_request = MintRequest(id=self._id, public_key=pk)
         payload = mint_request.model_dump_json().encode()
@@ -239,6 +245,7 @@ class Client:
             payload: Raw mint request payload that was signed.
             responses: Successful HTTP responses containing partial signatures.
         """
+
         partial_signatures = [
             PartialSignature.model_validate_json(response.content)
             for response in responses
@@ -265,6 +272,7 @@ class Client:
         Raises:
             ValueError: If there are no tokens to spend.
         """
+
         if not self._tokens:
             raise ValueError("No tokens to pay")
         client_token = self._tokens.pop(0)
@@ -297,6 +305,7 @@ class Client:
         Raises:
             ValueError: If the recipient rejects the payment.
         """
+
         partial_signatures = [
             PartialSignature.model_validate_json(response.content)
             for response in responses
@@ -326,6 +335,7 @@ class Client:
         Raises:
             ValueError: If the signature is invalid or the key is unknown.
         """
+
         if not verify_signature(
             token.payload, token.signature, self._system_public_key
         ):

@@ -18,6 +18,7 @@ def client(respx_mock, fake_pk):
         system_public_key=fake_pk,
         servers=SERVER_URLS,
         f=F,
+        initial_balance=10,
     )
 
 

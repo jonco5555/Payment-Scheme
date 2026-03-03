@@ -45,6 +45,7 @@ class Server:
         Raises:
             ValueError: If the client is already registered or max clients reached.
         """
+
         if request.id in self._clients:
             raise ValueError(f"Client already registered: {request.id}")
         if len(self._clients) >= self._num_clients:
@@ -72,6 +73,7 @@ class Server:
         Raises:
             ValueError: If the client is not registered.
         """
+
         if request.id not in self._clients:
             raise ValueError(f"Client not registered: {request.id}")
         del self._clients[request.id]
@@ -95,6 +97,7 @@ class Server:
         Raises:
             ValueError: If validation fails (unknown client, bad signature, etc.).
         """
+
         mint_request = MintRequest.model_validate_json(request.payload)
         if mint_request.id not in self._clients:
             raise ValueError(f"Unknown client: {mint_request.id}")
@@ -140,6 +143,7 @@ class Server:
         Raises:
             ValueError: If the token was already spent or signatures are invalid.
         """
+
         transaction = Transaction.model_validate_json(request.payload)
         mint_request = MintRequest.model_validate_json(transaction.token.payload)
 
