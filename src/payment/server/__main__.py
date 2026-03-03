@@ -18,5 +18,5 @@ async def main(
     )
     fastapi_app = create_app(server)
     config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=port)
-    server = uvicorn.Server(config)
-    await server.serve()
+    uvicorn_server = uvicorn.Server(config)
+    await uvicorn_server.serve()

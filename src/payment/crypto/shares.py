@@ -131,10 +131,10 @@ def generate_shares_to_files(n: int, f: int, shares_dir: str) -> None:
 
     _, shares = generate_shares(n, f)
     for i, share in enumerate(shares):
-        with open(os.path.join(shares_dir, f"share_{i}.bin"), "wb") as f:
-            f.write(share.model_dump_json().encode())
-    with open(os.path.join(shares_dir, "system_public_key.bin"), "wb") as f:
-        f.write(shares[0].public_key.model_dump_json().encode())
+        with open(os.path.join(shares_dir, f"share_{i}.bin"), "wb") as file:
+            file.write(share.model_dump_json().encode())
+    with open(os.path.join(shares_dir, "system_public_key.bin"), "wb") as file:
+        file.write(shares[0].public_key.model_dump_json().encode())
 
 
 def partial_sign(message: bytes, key_share: KeyShare) -> PartialSignature:
