@@ -19,6 +19,7 @@ def client(respx_mock, fake_pk):
         servers=SERVER_URLS,
         f=F,
         initial_balance=10,
+        timeout=10.0,
     )
 
 
