@@ -194,60 +194,22 @@ def verify_signature(message: bytes, signature: G2_Point, public_key: G1_Point) 
     return lhs == rhs
 
 
-def generate_blinding_factor() -> int:
-    """Sample a random blinding factor r ∈ Z_q \\ {0}.
+def blind_point(point: G1_Point) -> tuple[G1_Point, int]:
+    """Blind a point in G1.
 
-    Used by clients to blind a message before sending it for threshold
-    signing, so that servers never see the real message point.
-
-    Returns:
-        Random non-zero scalar in [1, q).
-    """
-
-    r = secrets.randbelow(curve_order - 1) + 1  # avoid r = 0
-    return r
-
-
-def blind_message(message: bytes, blinding_factor: int) -> G2_Point:
-    """Blind a message for threshold blind signing.
-
-    Computes M' = r · H(m) where H maps the message to G2 and r is the
-    blinding factor.  The resulting point is indistinguishable from a
-    uniformly random G2 element to anyone who does not know r.
+    Computes P' = r · P where P is a G1 point and r is a
+    non-zero scalar in Z_q.
 
     Args:
-        message: The message whose hash-to-curve point will be blinded.
-        blinding_factor: Random scalar r ∈ Z_q \\ {0}.
+        point: Original point P ∈ G1.
 
     Returns:
-        Blinded message point M' ∈ G2.
+        Tuple of (blinded point, blinding factor).
     """
 
-    h = hash_to_G2(message, G2Basic.DST, G2Basic.xmd_hash_function)
-    blinded = multiply(h, blinding_factor)
-    return G2_Point.from_g2(blinded)
-
-
-def partial_blind_sign(
-    blinded_point: G2_Point, key_share: KeyShare
-) -> PartialSignature:
-    """Produce a partial signature on an already-blinded G2 point.
-
-    Computes σ'_i = s_i · M' where s_i is the server's key share and
-    M' is the blinded message point received from the client.  This is
-    the only operation a server performs during blind minting or blind
-    payment — it never needs to see the original message.
-
-    Args:
-        blinded_point: Blinded message M' ∈ G2 (from :func:`blind_message`).
-        key_share: Server's key share with id and scalar s_i.
-
-    Returns:
-        Partial blind signature with server id and σ'_i ∈ G2.
-    """
-
-    sig = multiply(blinded_point.to_g2(), key_share.share)
-    return PartialSignature(id=key_share.id, signature=G2_Point.from_g2(sig))
+    r = secrets.randbelow(curve_order - 1) + 1
+    blinded = multiply(point.to_g1(), r)
+    return G1_Point.from_g1(blinded), r
 
 
 def unblind_signature(blinded_signature: G2_Point, blinding_factor: int) -> G2_Point:

@@ -3,6 +3,7 @@ import uvicorn
 from payment.crypto.models import KeyShare
 from payment.server.app import create_app
 from payment.server.server import Server
+from payment.utils import configure_logging
 
 
 async def main(
@@ -11,6 +12,7 @@ async def main(
     initial_balance: int,
     port: int,
 ) -> None:
+    configure_logging()
     server = Server(
         key_share=key_share,
         num_clients=num_clients,

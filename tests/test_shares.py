@@ -1,14 +1,15 @@
-from py_ecc.optimized_bls12_381 import curve_order
+import secrets
 
+from py_ecc.optimized_bls12_381 import curve_order, multiply
+
+from payment.crypto.models import G2_Point
 from payment.crypto.shares import (
-    blind_message,
+    blind_point,
     combine_partial_signatures,
     evaluate_polynomial,
-    generate_blinding_factor,
     generate_polynomial,
     generate_shares,
     lagrange_coefficient,
-    partial_blind_sign,
     partial_sign,
     reconstruct_secret,
     unblind_signature,
@@ -147,7 +148,7 @@ def test_different_subsets_same_signature():
 
 def test_signature_invalid_for_different_message():
     n, f = 5, 2
-    secret_key, shares = generate_shares(n, f)
+    _, shares = generate_shares(n, f)
 
     message1 = b"original"
     message2 = b"tampered"
@@ -162,8 +163,8 @@ def test_signature_invalid_for_different_message():
 def test_signature_invalid_for_wrong_key():
     n, f = 5, 2
 
-    secret_key1, shares1 = generate_shares(n, f)
-    secret_key2, shares2 = generate_shares(n, f)
+    _, shares1 = generate_shares(n, f)
+    _, shares2 = generate_shares(n, f)
 
     message = b"test"
     partial_sigs = [partial_sign(message, share) for share in shares1[: f + 1]]
@@ -173,73 +174,57 @@ def test_signature_invalid_for_wrong_key():
     assert not verify_signature(message, signature, wrong_key)
 
 
-# ---------------------------------------------------------------------------
-# Blind signing
-# ---------------------------------------------------------------------------
+def _random_nonzero_scalar() -> int:
+    return secrets.randbelow(curve_order - 1) + 1
 
 
-def test_blind_sign_end_to_end():
+def test_blind_point_changes_point():
     n, f = 5, 2
-    _sk, shares = generate_shares(n, f)
+    _, shares = generate_shares(n, f)
     pk = shares[0].public_key
 
-    message = b"token-public-key-bytes"
-    r = generate_blinding_factor()
+    blinded1, r1 = blind_point(pk)
+    blinded2, r2 = blind_point(pk)
 
-    # Client blinds
-    blinded = blind_message(message, r)
+    assert blinded1 != pk
+    assert blinded2 != pk
 
-    # f+1 servers each partially sign the blinded point
-    partial_sigs = [partial_blind_sign(blinded, share) for share in shares[: f + 1]]
-
-    # Client combines and unblinds
-    combined_blind = combine_partial_signatures(partial_sigs)
-    signature = unblind_signature(combined_blind, r)
-
-    # Resulting signature is a valid BLS signature on the original message
-    assert verify_signature(message, signature, pk)
+    assert blinded1 != blinded2 or r1 != r2
 
 
-def test_blind_sign_different_blinding_factors():
+def test_unblind_signature_restores_original():
     n, f = 5, 2
-    _sk, shares = generate_shares(n, f)
-
-    message = b"same-message"
-    r1 = generate_blinding_factor()
-    r2 = generate_blinding_factor()
-
-    def blind_sign_flow(r):
-        blinded = blind_message(message, r)
-        partials = [partial_blind_sign(blinded, s) for s in shares[: f + 1]]
-        combined = combine_partial_signatures(partials)
-        return unblind_signature(combined, r)
-
-    sig1 = blind_sign_flow(r1)
-    sig2 = blind_sign_flow(r2)
-
-    assert sig1 == sig2
-
-
-def test_blinded_points_are_unlinkable():
-    message = b"token-pk"
-    r1 = generate_blinding_factor()
-    r2 = generate_blinding_factor()
-
-    b1 = blind_message(message, r1)
-    b2 = blind_message(message, r2)
-
-    assert b1 != b2
-
-
-def test_blind_signature_invalid_for_wrong_message():
-    n, f = 5, 2
-    _sk, shares = generate_shares(n, f)
+    _, shares = generate_shares(n, f)
     pk = shares[0].public_key
 
-    r = generate_blinding_factor()
-    blinded = blind_message(b"real-message", r)
-    partials = [partial_blind_sign(blinded, s) for s in shares[: f + 1]]
-    combined = combine_partial_signatures(partials)
-    signature = unblind_signature(combined, r)
+    message = b"blind-sign-message"
+    partial_sigs = [partial_sign(message, share) for share in shares[: f + 1]]
+    combined_sig = combine_partial_signatures(partial_sigs)
 
-    assert not verify_signature(b"other-message", signature, pk)
+    r = _random_nonzero_scalar()
+    blinded = G2_Point.from_g2(multiply(combined_sig.to_g2(), r))
+    unblinded = unblind_signature(blinded, r)
+
+    assert unblinded == combined_sig
+    assert verify_signature(message, unblinded, pk)
+
+
+def test_unblind_signature_wrong_factor_fails_verification():
+    n, f = 5, 2
+    _, shares = generate_shares(n, f)
+    pk = shares[0].public_key
+
+    message = b"blind-sign-message"
+    partial_sigs = [partial_sign(message, share) for share in shares[: f + 1]]
+    combined_sig = combine_partial_signatures(partial_sigs)
+
+    r = _random_nonzero_scalar()
+    blinded = G2_Point.from_g2(multiply(combined_sig.to_g2(), r))
+
+    wrong_r = _random_nonzero_scalar()
+    while wrong_r == r:
+        wrong_r = _random_nonzero_scalar()
+
+    wrong_unblinded = unblind_signature(blinded, wrong_r)
+
+    assert not verify_signature(message, wrong_unblinded, pk)

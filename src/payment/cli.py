@@ -47,6 +47,7 @@ def client(
             f=config.system.failures,
             port=port,
             initial_balance=config.system.initial_balance,
+            timeout=2 * config.system.delta,
         )
     )
 

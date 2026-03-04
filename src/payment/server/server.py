@@ -14,10 +14,6 @@ from payment.models import (
 )
 from payment.server.models import ClientEntry
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-
 
 class Server:
     def __init__(
