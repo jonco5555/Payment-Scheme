@@ -10,10 +10,13 @@ from payment.models import (
     SignedMintRequest,
     SignedTransaction,
     Token,
+    TokenPayload,
     Transaction,
     UnregistrationRequest,
 )
 from payment.server.server import Server
+
+pytestmark = pytest.mark.usefixtures("_mock_crypto")
 
 
 @pytest.fixture
@@ -33,23 +36,18 @@ async def registered_server(server, fake_pk):
 
 
 @pytest.fixture
-def signed_mint_request(fake_pk, fake_sig):
-    mint_req = MintRequest(id="client-1", public_key=fake_pk)
+def signed_mint_request(fake_sig):
+    mint_req = MintRequest(id="client-1", blinded_message=fake_sig)
     payload = mint_req.model_dump_json().encode()
     return SignedMintRequest(payload=payload, signature=fake_sig)
 
 
 @pytest.fixture
 def signed_transaction(fake_pk, fake_sig):
-    token_payload = (
-        MintRequest(id="client-1", public_key=fake_pk).model_dump_json().encode()
-    )
+    token_payload = TokenPayload(public_key=fake_pk).model_dump_json().encode()
     token = Token(payload=token_payload, signature=fake_sig)
 
-    recipient_payload = (
-        MintRequest(id="recipient", public_key=fake_pk).model_dump_json().encode()
-    )
-    tx = Transaction(token=token, recipient_payload=recipient_payload)
+    tx = Transaction(token=token, recipient_blinded_payload=fake_sig)
     return SignedTransaction(payload=tx.model_dump_json().encode(), signature=fake_sig)
 
 

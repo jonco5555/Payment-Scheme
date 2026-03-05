@@ -5,10 +5,12 @@ import pytest
 
 from payment.client.client import Client
 from payment.crypto.models import PartialSignature
-from payment.models import MintRequest, Token
+from payment.models import Payment
 
 SERVER_URLS = ["http://s1:8000", "http://s2:8000", "http://s3:8000"]
 F = 1  # threshold = f + 1 = 2
+
+pytestmark = pytest.mark.usefixtures("_mock_crypto")
 
 
 @pytest.fixture
@@ -59,9 +61,9 @@ async def test_broadcast_raises_without_quorum(client, respx_mock):
 
 
 @pytest.mark.asyncio
-async def test_pay_raises_with_no_tokens(client, respx_mock, fake_pk):
-    respx_mock.post("http://recipient:9000/payment-key").mock(
-        return_value=httpx.Response(200, json=fake_pk.model_dump(mode="json"))
+async def test_pay_raises_with_no_tokens(client, respx_mock, fake_sig):
+    respx_mock.get("http://recipient:9000/payment-key").mock(
+        return_value=httpx.Response(200, json=fake_sig.model_dump(mode="json"))
     )
 
     with pytest.raises(ValueError, match="No tokens to pay"):
@@ -70,24 +72,20 @@ async def test_pay_raises_with_no_tokens(client, respx_mock, fake_pk):
 
 @pytest.mark.asyncio
 async def test_receive_payment_stores_token(client, fake_sig):
-    pk = client.generate_payment_key()
-    payload = MintRequest(id="test-client", public_key=pk).model_dump_json().encode()
-    token = Token(payload=payload, signature=fake_sig)
+    blinded_payload = client.generate_payment_key()
+    payment = Payment(blinded_payload=blinded_payload, blinded_signature=fake_sig)
 
-    await client.receive_payment(token)
+    await client.receive_payment(payment)
 
     assert len(client._tokens) == 1
-    assert pk not in client._pending_keys
+    assert blinded_payload not in client._pending_keys
 
 
 @pytest.mark.asyncio
 async def test_receive_payment_rejects_invalid_signature(client, fake_sig):
     with patch("payment.client.client.verify_signature", return_value=False):
-        pk = client.generate_payment_key()
-        payload = (
-            MintRequest(id="test-client", public_key=pk).model_dump_json().encode()
-        )
-        token = Token(payload=payload, signature=fake_sig)
+        blinded_payload = client.generate_payment_key()
+        payment = Payment(blinded_payload=blinded_payload, blinded_signature=fake_sig)
 
-        with pytest.raises(ValueError, match="invalid token signature"):
-            await client.receive_payment(token)
+        with pytest.raises(ValueError, match="invalid payment signature"):
+            await client.receive_payment(payment)

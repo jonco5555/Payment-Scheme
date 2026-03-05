@@ -4,9 +4,9 @@ import logging
 import httpx
 
 from payment.client.models import ClientToken
-from payment.crypto.models import G1_Point, PartialSignature
+from payment.crypto.models import G1_Point, G2_Point, PartialSignature
 from payment.crypto.shares import (
-    blind_point,
+    blind_message,
     combine_partial_signatures,
     create_fresh_key_pair,
     sign_message,
@@ -15,10 +15,12 @@ from payment.crypto.shares import (
 )
 from payment.models import (
     MintRequest,
+    Payment,
     RegistrationRequest,
     SignedMintRequest,
     SignedTransaction,
     Token,
+    TokenPayload,
     Transaction,
     UnregistrationRequest,
 )
@@ -33,6 +35,7 @@ class Client:
         f: int,
         initial_balance: int,
         timeout: float,
+        demo_enabled: bool = False,
     ) -> None:
         self._logger = logging.getLogger(__name__)
         self._id = id
@@ -41,9 +44,10 @@ class Client:
         self._client = httpx.AsyncClient(timeout=timeout)
         self._server_urls = servers
         self._tokens: list[ClientToken] = []
-        self._pending_keys: dict[G1_Point, tuple[int, int]] = {}
+        self._pending_keys: dict[G2_Point, tuple[int, int, bytes]] = {}
         self._threshold = f + 1
         self._balance = initial_balance
+        self._demo_enabled = demo_enabled
 
     async def start(self) -> None:
         await self.register()
@@ -122,7 +126,7 @@ class Client:
 
         self._logger.info(f"{self._id} unregistered successfully")
 
-    def generate_payment_key(self) -> G1_Point:
+    def generate_payment_key(self) -> G2_Point:
         """Create a one-time key pair for receiving a payment.
 
         The secret key is stored internally; the public key is returned
@@ -133,9 +137,11 @@ class Client:
         """
 
         pk, sk = create_fresh_key_pair()
-        pk, r = blind_point(pk)
-        self._pending_keys[pk] = (sk, r)
-        return pk
+        token_payload = TokenPayload(public_key=pk)
+        payload_bytes = token_payload.model_dump_json().encode()
+        blinded_payload, r = blind_message(payload_bytes)
+        self._pending_keys[blinded_payload] = (sk, r, payload_bytes)
+        return blinded_payload
 
     async def mint_request(self) -> None:
         """Mint a new token by collecting partial signatures from servers.
@@ -176,17 +182,19 @@ class Client:
 
         self._logger.info(f"{self._id} issuing a pay request to {recipient_id}")
 
-        key_response = await self._client.post(f"{recipient_address}/payment-key")
+        key_response = await self._client.get(f"{recipient_address}/payment-key")
         if key_response.status_code != httpx.codes.OK:
             raise ValueError(
                 f"{self._id} failed to get payment key from {recipient_address}"
             )
 
-        recipient_public_key = G1_Point.model_validate_json(key_response.content)
+        recipient_blinded_public_key = G2_Point.model_validate_json(
+            key_response.content
+        )
         self._logger.info(f"{self._id} received payment key from {recipient_address}")
 
-        client_token, recipient_payload, signed_tx = await self._prepare_pay(
-            recipient_id, recipient_public_key
+        client_token, signed_tx = await self._prepare_pay(
+            recipient_id, recipient_blinded_public_key
         )
 
         try:
@@ -196,9 +204,8 @@ class Client:
             raise
 
         await self._process_pay_responses(
-            recipient_payload, recipient_address, responses
+            recipient_blinded_public_key, recipient_address, responses
         )
-
         self._logger.info(f"{self._id} pay request to {recipient_id} completed")
 
     async def _prepare_mint(self) -> tuple[int, bytes, SignedMintRequest, int]:
@@ -209,12 +216,17 @@ class Client:
         """
 
         pk, sk = create_fresh_key_pair()
-        pk, r = blind_point(pk)
-        mint_request = MintRequest(id=self._id, public_key=pk)
-        payload = mint_request.model_dump_json().encode()
-        signature = sign_message(payload, self._private_key)
-        signed_mint_request = SignedMintRequest(payload=payload, signature=signature)
-        return sk, payload, signed_mint_request, r
+
+        token_payload = TokenPayload(public_key=pk)
+        payload_bytes = token_payload.model_dump_json().encode()
+        blinded_payload, r = blind_message(payload_bytes)
+        mint_request = MintRequest(id=self._id, blinded_message=blinded_payload)
+        mint_payload = mint_request.model_dump_json().encode()
+        signature = sign_message(mint_payload, self._private_key)
+        signed_mint_request = SignedMintRequest(
+            payload=mint_payload, signature=signature
+        )
+        return sk, payload_bytes, signed_mint_request, r
 
     async def _process_mint_responses(
         self,
@@ -236,8 +248,8 @@ class Client:
             PartialSignature.model_validate_json(response.content)
             for response in responses
         ]
-        signature = combine_partial_signatures(partial_signatures)
-        signature = unblind_signature(signature, blinding_factor)
+        blinded_signature = combine_partial_signatures(partial_signatures)
+        signature = unblind_signature(blinded_signature, blinding_factor)
         self._tokens.append(
             ClientToken(
                 token=Token(payload=payload, signature=signature), secret_key=sk
@@ -245,16 +257,16 @@ class Client:
         )
 
     async def _prepare_pay(
-        self, recipient_id: str, recipient_public_key: G1_Point
-    ) -> tuple[ClientToken, bytes, SignedTransaction]:
+        self, recipient_id: str, recipient_blinded_public_key: G2_Point
+    ) -> tuple[ClientToken, SignedTransaction]:
         """Build and sign a pay transaction using the oldest available token.
 
         Args:
             recipient_id: Recipient's client identifier.
-            recipient_public_key: One-time public key provided by the recipient.
+            recipient_blinded_public_key: One-time public key provided by the recipient.
 
         Returns:
-            Tuple of (spent_token, recipient_payload, signed_transaction).
+            Tuple of (spent_token, signed_transaction).
 
         Raises:
             ValueError: If there are no tokens to spend.
@@ -263,29 +275,25 @@ class Client:
         if not self._tokens:
             raise ValueError("No tokens to pay")
         client_token = self._tokens.pop(0)
-        recipient_mint_request = MintRequest(
-            id=recipient_id, public_key=recipient_public_key
-        )
-        recipient_payload = recipient_mint_request.model_dump_json().encode()
         tx = Transaction(
             token=client_token.token,
-            recipient_payload=recipient_payload,
+            recipient_blinded_payload=recipient_blinded_public_key,
         )
         payload = tx.model_dump_json().encode()
         signature = sign_message(payload, client_token.secret_key)
         signed_tx = SignedTransaction(payload=payload, signature=signature)
-        return client_token, recipient_payload, signed_tx
+        return client_token, signed_tx
 
     async def _process_pay_responses(
         self,
-        recipient_payload: bytes,
+        recipient_blinded_public_key: G2_Point,
         recipient_address: str,
         responses: list[httpx.Response],
     ) -> None:
         """Combine partial signatures into a new token and deliver it to the recipient.
 
         Args:
-            recipient_payload: Serialized mint request for the recipient.
+            recipient_blinded_public_key: One-time public key provided by the recipient.
             recipient_address: Base URL of the recipient's HTTP server.
             responses: Successful HTTP responses containing partial signatures.
 
@@ -297,10 +305,13 @@ class Client:
             PartialSignature.model_validate_json(response.content)
             for response in responses
         ]
-        signature = combine_partial_signatures(partial_signatures)
-        token = Token(payload=recipient_payload, signature=signature)
+        blinded_signature = combine_partial_signatures(partial_signatures)
+        payment = Payment(
+            blinded_payload=recipient_blinded_public_key,
+            blinded_signature=blinded_signature,
+        )
         response = await self._client.post(
-            f"{recipient_address}/pay", json=token.model_dump(mode="json")
+            f"{recipient_address}/pay", json=payment.model_dump(mode="json")
         )
         if response.status_code != httpx.codes.OK:
             raise ValueError(
@@ -310,30 +321,30 @@ class Client:
             f"{self._id} payment sent successfully to {recipient_address}"
         )
 
-    async def receive_payment(self, token: Token) -> None:
+    async def receive_payment(self, payment: Payment) -> None:
         """Verify and accept an incoming payment token.
 
-        Checks the system signature and matches the token's public key
+        Checks the system signature and matches the payment's blinded payload
         against a pending one-time key issued by `generate_payment_key`.
 
         Args:
-            token: The payment token to accept.
+            payment: The payment to accept.
 
         Raises:
             ValueError: If the signature is invalid or the key is unknown.
         """
 
-        if not verify_signature(
-            token.payload, token.signature, self._system_public_key
-        ):
-            raise ValueError(f"{self._id} invalid token signature")
-
-        mint_request = MintRequest.model_validate_json(token.payload)
-        if mint_request.public_key not in self._pending_keys:
+        if payment.blinded_payload not in self._pending_keys:
             raise ValueError(f"{self._id} no pending key for this payment")
 
-        sk, r = self._pending_keys.pop(mint_request.public_key)
-        token = Token(
-            payload=token.payload, signature=unblind_signature(token.signature, r)
+        sk, r, pk_bytes = self._pending_keys.pop(payment.blinded_payload)
+        signature = unblind_signature(payment.blinded_signature, r)
+
+        if not verify_signature(pk_bytes, signature, self._system_public_key):
+            raise ValueError(f"{self._id} invalid payment signature")
+
+        self._tokens.append(
+            ClientToken(
+                token=Token(payload=pk_bytes, signature=signature), secret_key=sk
+            )
         )
-        self._tokens.append(ClientToken(token=token, secret_key=sk))

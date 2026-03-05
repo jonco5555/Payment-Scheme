@@ -5,6 +5,7 @@ system:
   clients: 5
   initial_balance: 100
   delta: 5.0
+  demo_enabled: true
 
 servers:
   - id: 0

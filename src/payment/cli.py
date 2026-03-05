@@ -48,6 +48,7 @@ def client(
             port=port,
             initial_balance=config.system.initial_balance,
             timeout=2 * config.system.delta,
+            demo_enabled=config.system.demo_enabled,
         )
     )
 
@@ -78,30 +79,6 @@ def server(
             num_clients=num_clients,
             initial_balance=initial_balance,
             port=port,
-        )
-    )
-
-
-@app.command()
-def interactive_client(
-    id: Annotated[str, typer.Option(envvar="CLIENT_ID")],
-    config_path: Annotated[str, typer.Option(envvar="CONFIG_PATH")],
-) -> None:
-    from payment.client.__main__ import interactive_main
-
-    config = load_config(config_path)
-
-    with open(config.system.public_key_path, "rb") as f:
-        system_public_key = G1_Point.model_validate_json(f.read())
-
-    servers = [server.address for server in config.servers]
-    asyncio.run(
-        interactive_main(
-            id=id,
-            system_public_key=system_public_key,
-            servers=servers,
-            f=config.system.failures,
-            initial_balance=config.system.initial_balance,
         )
     )
 

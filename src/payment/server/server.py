@@ -2,13 +2,17 @@ import asyncio
 import logging
 
 from payment.crypto.models import KeyShare, PartialSignature
-from payment.crypto.shares import partial_sign, verify_signature
+from payment.crypto.shares import (
+    partial_sign_blinded_message,
+    verify_signature,
+)
 from payment.models import (
     MintRequest,
     RegistrationRequest,
     SignedMintRequest,
     SignedTransaction,
     Token,
+    TokenPayload,
     Transaction,
     UnregistrationRequest,
 )
@@ -104,9 +108,9 @@ class Server:
             f"Server {self._id} handling mint request from {mint_request.id}"
         )
 
-        if mint_request.public_key in client.public_key_nullifiers:
+        if mint_request.blinded_message in client.public_key_nullifiers:
             raise ValueError(
-                f"Public key already used for {mint_request.id}: {mint_request.public_key}"
+                f"Public key already used for {mint_request.id}: {mint_request.blinded_message}"
             )
 
         if client.balance < 1:
@@ -120,8 +124,10 @@ class Server:
             raise ValueError("Invalid signature")
 
         client.balance -= 1
-        client.public_key_nullifiers.add(mint_request.public_key)
-        return partial_sign(request.payload, self._key_share)
+        client.public_key_nullifiers.add(mint_request.blinded_message)
+        return partial_sign_blinded_message(
+            mint_request.blinded_message, self._key_share
+        )
 
     async def handle_pay(self, request: SignedTransaction) -> PartialSignature:
         """Validate a pay transaction and return a partial signature for the recipient.
@@ -141,14 +147,8 @@ class Server:
         """
 
         transaction = Transaction.model_validate_json(request.payload)
-        mint_request = MintRequest.model_validate_json(transaction.token.payload)
 
-        if mint_request.id not in self._clients:
-            raise ValueError(f"Unknown client: {mint_request.id}")
-
-        self._logger.info(
-            f"Server {self._id} handling pay request from {mint_request.id}"
-        )
+        self._logger.info(f"Server {self._id} handling pay request")
 
         if transaction.token in self._token_nullifiers:
             raise ValueError(f"Token already used: {transaction.token}")
@@ -160,12 +160,16 @@ class Server:
         ):
             raise ValueError("Invalid token signature")
 
+        token_payload = TokenPayload.model_validate_json(transaction.token.payload)
+
         if not verify_signature(
             request.payload,
             request.signature,
-            mint_request.public_key,
+            token_payload.public_key,
         ):
             raise ValueError("Invalid transaction signature")
 
         self._token_nullifiers.add(transaction.token)
-        return partial_sign(transaction.recipient_payload, self._key_share)
+        return partial_sign_blinded_message(
+            transaction.recipient_blinded_payload, self._key_share
+        )

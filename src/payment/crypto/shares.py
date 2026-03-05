@@ -137,22 +137,6 @@ def generate_shares_to_files(n: int, f: int, shares_dir: str) -> None:
         file.write(shares[0].public_key.model_dump_json().encode())
 
 
-def partial_sign(message: bytes, key_share: KeyShare) -> PartialSignature:
-    """Generate partial BLS signature σ_i = H(m)^{s_i}.
-
-    Args:
-        message: Message to sign.
-        key_share: KeyShare with id and share value s_i.
-
-    Returns:
-        PartialSignature with id and signature point in G2.
-    """
-
-    message_point = hash_to_G2(message, G2Basic.DST, G2Basic.xmd_hash_function)
-    signature = multiply(message_point, key_share.share)
-    return PartialSignature(id=key_share.id, signature=G2_Point.from_g2(signature))
-
-
 def combine_partial_signatures(partial_signatures: list[PartialSignature]) -> G2_Point:
     """Combine partial signatures using Lagrange interpolation in the exponent.
 
@@ -194,24 +178,6 @@ def verify_signature(message: bytes, signature: G2_Point, public_key: G1_Point) 
     return lhs == rhs
 
 
-def blind_point(point: G1_Point) -> tuple[G1_Point, int]:
-    """Blind a point in G1.
-
-    Computes P' = r · P where P is a G1 point and r is a
-    non-zero scalar in Z_q.
-
-    Args:
-        point: Original point P ∈ G1.
-
-    Returns:
-        Tuple of (blinded point, blinding factor).
-    """
-
-    r = secrets.randbelow(curve_order - 1) + 1
-    blinded = multiply(point.to_g1(), r)
-    return G1_Point.from_g1(blinded), r
-
-
 def unblind_signature(blinded_signature: G2_Point, blinding_factor: int) -> G2_Point:
     """Remove the blinding factor from a combined blind signature.
 
@@ -234,6 +200,43 @@ def unblind_signature(blinded_signature: G2_Point, blinding_factor: int) -> G2_P
     r_inv = pow(blinding_factor, curve_order - 2, curve_order)
     sig = multiply(blinded_signature.to_g2(), r_inv)
     return G2_Point.from_g2(sig)
+
+
+def blind_message(message: bytes) -> tuple[G2_Point, int]:
+    """Blind a message in G2.
+
+    Computes H(m)' = r · H(m) where H(m) is the hash of the message and r is a
+    non-zero scalar in Z_q.
+
+    Args:
+        message: Message to blind.
+
+    Returns:
+        Tuple of (blinded message, blinding factor).
+    """
+
+    r = secrets.randbelow(curve_order - 1) + 1
+    message_point = hash_to_G2(message, G2Basic.DST, G2Basic.xmd_hash_function)
+    blinded_point = multiply(message_point, r)
+
+    return G2_Point.from_g2(blinded_point), r
+
+
+def partial_sign_blinded_message(
+    blinded_message: G2_Point, key_share: KeyShare
+) -> PartialSignature:
+    """Sign a blinded message using a key share.
+
+    Args:
+        blinded_message: Blinded message to sign.
+        key_share: KeyShare with id and share value s_i.
+
+    Returns:
+        PartialSignature with id and signature point in G2.
+    """
+
+    signature = multiply(blinded_message.to_g2(), key_share.share)
+    return PartialSignature(id=key_share.id, signature=G2_Point.from_g2(signature))
 
 
 def create_fresh_key_pair() -> tuple[G1_Point, int]:
