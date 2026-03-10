@@ -1,0 +1,84 @@
+site_name: Payment Scheme
+repo_url: https://github.com/jonco5555/Payment-Scheme
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Cryptographic Primitives: crypto.md
+  - Protocols: protocols.md
+  - Unlinkability & Threat Model: threat-model.md
+  - Running the System: running.md
+  - Testing: testing.md
+  - Code Guide: code-guide.md
+  - Reference: reference/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+          icon: material/toggle-switch-off-outline
+          name: Switch to dark mode
+      primary: red
+      accent: red
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+          icon: material/toggle-switch
+          name: Switch to light mode
+      primary: red
+      accent: red
+  font:
+    text: Roboto
+    code: Roboto Mono
+  # logo: assets/icon.png
+  # favicon: assets/icon.png
+  features:
+    - navigation.tabs
+    - navigation.top
+    - navigation.tabs.sticky
+    - navigation.footer
+    - navigation.expand
+    - search.highlight
+    - search.suggest
+    - toc.integrate
+    - content.code.copy
+plugins:
+  - search
+  - awesome-pages
+  - gen-files:
+      scripts:
+      - docs/scripts/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - mkdocstrings
+  - section-index
+markdown_extensions:
+  - admonition
+  - codehilite
+  - footnotes
+  - meta
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.snippets:
+      restrict_base_path: false
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - attr_list
+  - pymdownx.arithmatex:
+      generic: true
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/jonco5555/Payment-Scheme
