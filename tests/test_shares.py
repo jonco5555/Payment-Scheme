@@ -1,16 +1,14 @@
-import secrets
+from py_ecc.optimized_bls12_381 import curve_order
 
-from py_ecc.optimized_bls12_381 import curve_order, multiply
-
-from payment.crypto.models import G2_Point
 from payment.crypto.shares import (
-    blind_point,
+    blind_message,
     combine_partial_signatures,
+    create_fresh_key_pair,
     evaluate_polynomial,
     generate_polynomial,
     generate_shares,
     lagrange_coefficient,
-    partial_sign,
+    partial_sign_blinded_message,
     reconstruct_secret,
     unblind_signature,
     verify_signature,
@@ -107,35 +105,45 @@ def test_insufficient_shares_fails():
     assert reconstructed != secret_key
 
 
-def test_partial_sign_deterministic():
+def test_partial_sign_blinded_message_deterministic():
     n, f = 5, 2
-    secret_key, shares = generate_shares(n, f)
+    _, shares = generate_shares(n, f)
 
     message = b"test message"
-    sig1 = partial_sign(message, shares[0])
-    sig2 = partial_sign(message, shares[0])
+    blinded_message, _ = blind_message(message)
+    sig1 = partial_sign_blinded_message(blinded_message, shares[0])
+    sig2 = partial_sign_blinded_message(blinded_message, shares[0])
 
     assert sig1.signature == sig2.signature
 
 
 def test_combine_and_verify():
     n, f = 5, 2
-    secret_key, shares = generate_shares(n, f)
+    _, shares = generate_shares(n, f)
 
     message = b"test message"
-    partial_sigs = [partial_sign(message, share) for share in shares[: f + 1]]
-    combined_sig = combine_partial_signatures(partial_sigs)
+    blinded_message, r = blind_message(message)
 
+    partial_sigs = [
+        partial_sign_blinded_message(blinded_message, share)
+        for share in shares[: f + 1]
+    ]
+    combined_sig = combine_partial_signatures(partial_sigs)
+    unblinded_sig = unblind_signature(combined_sig, r)
     public_key = shares[0].public_key
-    assert verify_signature(message, combined_sig, public_key)
+
+    assert verify_signature(message, unblinded_sig, public_key)
 
 
 def test_different_subsets_same_signature():
     n, f = 7, 3
-    secret_key, shares = generate_shares(n, f)
+    _, shares = generate_shares(n, f)
 
     message = b"test message"
-    all_partial_sigs = [partial_sign(message, share) for share in shares]
+    blinded_message, _ = blind_message(message)
+    all_partial_sigs = [
+        partial_sign_blinded_message(blinded_message, share) for share in shares
+    ]
 
     subset1 = all_partial_sigs[0:4]
     subset2 = all_partial_sigs[3:7]
@@ -152,12 +160,16 @@ def test_signature_invalid_for_different_message():
 
     message1 = b"original"
     message2 = b"tampered"
+    blinded_message1, r = blind_message(message1)
 
-    partial_sigs = [partial_sign(message1, share) for share in shares[: f + 1]]
-    signature = combine_partial_signatures(partial_sigs)
-
+    partial_sigs = [
+        partial_sign_blinded_message(blinded_message1, share)
+        for share in shares[: f + 1]
+    ]
+    combined_sig = combine_partial_signatures(partial_sigs)
+    unblinded_sig = unblind_signature(combined_sig, r)
     public_key = shares[0].public_key
-    assert not verify_signature(message2, signature, public_key)
+    assert not verify_signature(message2, unblinded_sig, public_key)
 
 
 def test_signature_invalid_for_wrong_key():
@@ -167,64 +179,30 @@ def test_signature_invalid_for_wrong_key():
     _, shares2 = generate_shares(n, f)
 
     message = b"test"
-    partial_sigs = [partial_sign(message, share) for share in shares1[: f + 1]]
-    signature = combine_partial_signatures(partial_sigs)
-
-    wrong_key = shares2[0].public_key
-    assert not verify_signature(message, signature, wrong_key)
-
-
-def _random_nonzero_scalar() -> int:
-    return secrets.randbelow(curve_order - 1) + 1
-
-
-def test_blind_point_changes_point():
-    n, f = 5, 2
-    _, shares = generate_shares(n, f)
-    pk = shares[0].public_key
-
-    blinded1, r1 = blind_point(pk)
-    blinded2, r2 = blind_point(pk)
-
-    assert blinded1 != pk
-    assert blinded2 != pk
-
-    assert blinded1 != blinded2 or r1 != r2
-
-
-def test_unblind_signature_restores_original():
-    n, f = 5, 2
-    _, shares = generate_shares(n, f)
-    pk = shares[0].public_key
-
-    message = b"blind-sign-message"
-    partial_sigs = [partial_sign(message, share) for share in shares[: f + 1]]
+    blinded_message, r = blind_message(message)
+    partial_sigs = [
+        partial_sign_blinded_message(blinded_message, share)
+        for share in shares1[: f + 1]
+    ]
     combined_sig = combine_partial_signatures(partial_sigs)
-
-    r = _random_nonzero_scalar()
-    blinded = G2_Point.from_g2(multiply(combined_sig.to_g2(), r))
-    unblinded = unblind_signature(blinded, r)
-
-    assert unblinded == combined_sig
-    assert verify_signature(message, unblinded, pk)
+    unblinded_sig = unblind_signature(combined_sig, r)
+    public_key = shares2[0].public_key
+    assert not verify_signature(message, unblinded_sig, public_key)
 
 
-def test_unblind_signature_wrong_factor_fails_verification():
+def test_end_to_end_blind_signing_flow():
     n, f = 5, 2
     _, shares = generate_shares(n, f)
-    pk = shares[0].public_key
+    public_key = shares[0].public_key
 
-    message = b"blind-sign-message"
-    partial_sigs = [partial_sign(message, share) for share in shares[: f + 1]]
+    pk, _ = create_fresh_key_pair()
+    pk_bytes = pk.model_dump_json().encode()
+    blinded_pk, r = blind_message(pk_bytes)
+
+    partial_sigs = [
+        partial_sign_blinded_message(blinded_pk, share) for share in shares[: f + 1]
+    ]
     combined_sig = combine_partial_signatures(partial_sigs)
+    unblinded_sig = unblind_signature(combined_sig, r)
 
-    r = _random_nonzero_scalar()
-    blinded = G2_Point.from_g2(multiply(combined_sig.to_g2(), r))
-
-    wrong_r = _random_nonzero_scalar()
-    while wrong_r == r:
-        wrong_r = _random_nonzero_scalar()
-
-    wrong_unblinded = unblind_signature(blinded, wrong_r)
-
-    assert not verify_signature(message, wrong_unblinded, pk)
+    assert verify_signature(pk.model_dump_json().encode(), unblinded_sig, public_key)

@@ -20,6 +20,7 @@ async def main(
     port: int,
     initial_balance: int,
     timeout: float,
+    demo_enabled: bool = False,
 ) -> None:
     configure_logging()
     signal.signal(signal.SIGINT, handler)
@@ -32,35 +33,11 @@ async def main(
         f=f,
         initial_balance=initial_balance,
         timeout=timeout,
+        demo_enabled=demo_enabled,
     )
     fastapi_app = create_app(client)
     config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=port)
     client_server = uvicorn.Server(config)
     await client.start()
     await client_server.serve()
-    await client.stop()
-
-
-async def interactive_main(
-    id: str,
-    system_public_key: G1_Point,
-    servers: list[str],
-    f: int,
-    initial_balance: int,
-) -> None:
-    configure_logging()
-    client = Client(
-        id=id,
-        system_public_key=system_public_key,
-        servers=servers,
-        f=f,
-        initial_balance=initial_balance,
-    )
-    # fastapi_app = create_app(client)
-    # config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=port)
-    # client_server = uvicorn.Server(config)
-
-    await client.start()
-    await client.mint_request()
-    await client.pay_request("0", "http://localhost:9000")
     await client.stop()

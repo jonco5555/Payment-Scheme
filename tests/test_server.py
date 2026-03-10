@@ -10,10 +10,13 @@ from payment.models import (
     SignedMintRequest,
     SignedTransaction,
     Token,
+    TokenPayload,
     Transaction,
     UnregistrationRequest,
 )
 from payment.server.server import Server
+
+pytestmark = pytest.mark.usefixtures("_mock_crypto")
 
 
 @pytest.fixture
@@ -23,7 +26,7 @@ def fake_key_share(fake_pk, fake_sk):
 
 @pytest.fixture
 def server(fake_key_share):
-    return Server(key_share=fake_key_share, num_clients=1, initial_balance=10)
+    return Server(id="1", key_share=fake_key_share, num_clients=1, initial_balance=10)
 
 
 @pytest_asyncio.fixture
@@ -33,23 +36,18 @@ async def registered_server(server, fake_pk):
 
 
 @pytest.fixture
-def signed_mint_request(fake_pk, fake_sig):
-    mint_req = MintRequest(id="client-1", public_key=fake_pk)
+def signed_mint_request(fake_sig):
+    mint_req = MintRequest(id="client-1", blinded_message=fake_sig)
     payload = mint_req.model_dump_json().encode()
     return SignedMintRequest(payload=payload, signature=fake_sig)
 
 
 @pytest.fixture
 def signed_transaction(fake_pk, fake_sig):
-    token_payload = (
-        MintRequest(id="client-1", public_key=fake_pk).model_dump_json().encode()
-    )
+    token_payload = TokenPayload(public_key=fake_pk).model_dump_json().encode()
     token = Token(payload=token_payload, signature=fake_sig)
 
-    recipient_payload = (
-        MintRequest(id="recipient", public_key=fake_pk).model_dump_json().encode()
-    )
-    tx = Transaction(token=token, recipient_payload=recipient_payload)
+    tx = Transaction(token=token, recipient_blinded_payload=fake_sig)
     return SignedTransaction(payload=tx.model_dump_json().encode(), signature=fake_sig)
 
 
@@ -63,7 +61,7 @@ async def test_register(server, fake_pk):
 
 @pytest.mark.asyncio
 async def test_register_concurrent(fake_key_share, fake_pk):
-    server = Server(key_share=fake_key_share, num_clients=3, initial_balance=10)
+    server = Server(id="1", key_share=fake_key_share, num_clients=3, initial_balance=10)
 
     requests = [
         RegistrationRequest(id=f"client-{i}", public_key=fake_pk) for i in range(3)

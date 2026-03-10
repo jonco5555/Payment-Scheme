@@ -1,11 +1,17 @@
+from typing import Optional
+
 from pydantic import BaseModel, ConfigDict
 
 from payment.crypto.models import G1_Point, G2_Point
 
 
+class TokenPayload(BaseModel):
+    public_key: G1_Point
+
+
 class MintRequest(BaseModel):
     id: str
-    public_key: G1_Point
+    blinded_message: G2_Point  # The blinded hash of the TokenPayload
 
 
 class SignedMintRequest(BaseModel):
@@ -22,12 +28,17 @@ class Token(BaseModel):
 
 class Transaction(BaseModel):
     token: Token
-    recipient_payload: bytes  # MintRequest
+    recipient_blinded_payload: G2_Point  # Blinded TokenPayload
 
 
 class SignedTransaction(BaseModel):
     payload: bytes  # Transaction
     signature: G2_Point
+
+
+class Payment(BaseModel):
+    blinded_payload: G2_Point
+    blinded_signature: G2_Point
 
 
 class RegistrationRequest(BaseModel):
@@ -46,10 +57,11 @@ class SystemConfig(BaseModel):
     clients: int
     initial_balance: int
     delta: float
+    demo_enabled: Optional[bool] = False
 
 
 class ServerConfig(BaseModel):
-    id: int
+    id: str
     address: str
 
 

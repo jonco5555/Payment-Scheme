@@ -2,13 +2,17 @@ import asyncio
 import logging
 
 from payment.crypto.models import KeyShare, PartialSignature
-from payment.crypto.shares import partial_sign, verify_signature
+from payment.crypto.shares import (
+    partial_sign_blinded_message,
+    verify_signature,
+)
 from payment.models import (
     MintRequest,
     RegistrationRequest,
     SignedMintRequest,
     SignedTransaction,
     Token,
+    TokenPayload,
     Transaction,
     UnregistrationRequest,
 )
@@ -18,13 +22,14 @@ from payment.server.models import ClientEntry
 class Server:
     def __init__(
         self,
+        id: str,
         key_share: KeyShare,
         num_clients: int,
         initial_balance: int,
     ) -> None:
         self._logger = logging.getLogger(__name__)
+        self._id = id
         self._key_share = key_share
-        self._id = self._key_share.id
         self._system_public_key = self._key_share.public_key
         self._num_clients = num_clients
         self._initial_balance = initial_balance
@@ -51,8 +56,7 @@ class Server:
             balance=self._initial_balance, public_key=request.public_key
         )
         self._logger.info(
-            f"Server {self._id} registered client {request.id} "
-            f"({len(self._clients)}/{self._num_clients})"
+            f"{self._id} registered client {request.id} ({len(self._clients)}/{self._num_clients})"
         )
 
         if len(self._clients) == self._num_clients:
@@ -74,8 +78,7 @@ class Server:
             raise ValueError(f"Client not registered: {request.id}")
         del self._clients[request.id]
         self._logger.info(
-            f"Server {self._id} unregistered client {request.id} "
-            f"({len(self._clients)} remaining)"
+            f"{self._id} unregistered client {request.id} ({len(self._clients)} remaining)"
         )
 
     async def handle_mint(self, request: SignedMintRequest) -> PartialSignature:
@@ -100,14 +103,16 @@ class Server:
 
         client = self._clients[mint_request.id]
 
-        self._logger.info(
-            f"Server {self._id} handling mint request from {mint_request.id}"
-        )
+        self._logger.info(f"{self._id} handling mint request from {mint_request.id}")
 
-        if mint_request.public_key in client.public_key_nullifiers:
+        if mint_request.blinded_message in client.public_key_nullifiers:
             raise ValueError(
-                f"Public key already used for {mint_request.id}: {mint_request.public_key}"
+                f"Public key already used for {mint_request.id}: {mint_request.blinded_message}"
             )
+
+        self._logger.debug(
+            f"{self._id} received public key {mint_request.blinded_message} from {mint_request.id}"
+        )
 
         if client.balance < 1:
             raise ValueError(f"Insufficient balance for {mint_request.id}")
@@ -120,8 +125,10 @@ class Server:
             raise ValueError("Invalid signature")
 
         client.balance -= 1
-        client.public_key_nullifiers.add(mint_request.public_key)
-        return partial_sign(request.payload, self._key_share)
+        client.public_key_nullifiers.add(mint_request.blinded_message)
+        return partial_sign_blinded_message(
+            mint_request.blinded_message, self._key_share
+        )
 
     async def handle_pay(self, request: SignedTransaction) -> PartialSignature:
         """Validate a pay transaction and return a partial signature for the recipient.
@@ -141,14 +148,8 @@ class Server:
         """
 
         transaction = Transaction.model_validate_json(request.payload)
-        mint_request = MintRequest.model_validate_json(transaction.token.payload)
 
-        if mint_request.id not in self._clients:
-            raise ValueError(f"Unknown client: {mint_request.id}")
-
-        self._logger.info(
-            f"Server {self._id} handling pay request from {mint_request.id}"
-        )
+        self._logger.info(f"{self._id} handling pay request")
 
         if transaction.token in self._token_nullifiers:
             raise ValueError(f"Token already used: {transaction.token}")
@@ -160,12 +161,18 @@ class Server:
         ):
             raise ValueError("Invalid token signature")
 
+        token_payload = TokenPayload.model_validate_json(transaction.token.payload)
+
         if not verify_signature(
             request.payload,
             request.signature,
-            mint_request.public_key,
+            token_payload.public_key,
         ):
             raise ValueError("Invalid transaction signature")
 
+        self._logger.debug(f"{self._id} received public key {token_payload.public_key}")
+
         self._token_nullifiers.add(transaction.token)
-        return partial_sign(transaction.recipient_payload, self._key_share)
+        return partial_sign_blinded_message(
+            transaction.recipient_blinded_payload, self._key_share
+        )

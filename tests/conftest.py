@@ -25,7 +25,7 @@ def fake_partial_sig(fake_sig):
     return PartialSignature(id=1, signature=fake_sig)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _mock_crypto(fake_sig, fake_pk, fake_sk, fake_partial_sig):
     """Mock all crypto ops to avoid expensive elliptic-curve math."""
     with (
@@ -41,7 +41,7 @@ def _mock_crypto(fake_sig, fake_pk, fake_sk, fake_partial_sig):
         ),
         patch("payment.server.server.verify_signature", return_value=True),
         patch(
-            "payment.server.server.partial_sign",
+            "payment.server.server.partial_sign_blinded_message",
             return_value=fake_partial_sig,
         ),
     ):
