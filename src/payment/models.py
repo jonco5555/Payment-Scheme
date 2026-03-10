@@ -61,7 +61,7 @@ class SystemConfig(BaseModel):
 
 
 class ServerConfig(BaseModel):
-    id: int
+    id: str
     address: str
 
 

@@ -38,4 +38,8 @@ def create_app(client: Client) -> FastAPI:
             )
             return {"status": "ok"}
 
+        @app.get("/demo/balance")
+        async def balance():
+            return {"balance": client._balance, "tokens": len(client._tokens)}
+
     return app

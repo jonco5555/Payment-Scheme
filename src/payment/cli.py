@@ -55,7 +55,7 @@ def client(
 
 @app.command()
 def server(
-    id: Annotated[int, typer.Option(envvar="SERVER_ID")],
+    id: Annotated[str, typer.Option(envvar="SERVER_ID")],
     config_path: Annotated[str, typer.Option(envvar="CONFIG_PATH")],
     key_share_path: Annotated[str, typer.Option(envvar="KEY_SHARE_PATH")],
 ) -> None:
@@ -75,6 +75,7 @@ def server(
     )
     asyncio.run(
         main(
+            id=id,
             key_share=key_share,
             num_clients=num_clients,
             initial_balance=initial_balance,

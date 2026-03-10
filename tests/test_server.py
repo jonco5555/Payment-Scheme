@@ -26,7 +26,7 @@ def fake_key_share(fake_pk, fake_sk):
 
 @pytest.fixture
 def server(fake_key_share):
-    return Server(key_share=fake_key_share, num_clients=1, initial_balance=10)
+    return Server(id="1", key_share=fake_key_share, num_clients=1, initial_balance=10)
 
 
 @pytest_asyncio.fixture
@@ -61,7 +61,7 @@ async def test_register(server, fake_pk):
 
 @pytest.mark.asyncio
 async def test_register_concurrent(fake_key_share, fake_pk):
-    server = Server(key_share=fake_key_share, num_clients=3, initial_balance=10)
+    server = Server(id="1", key_share=fake_key_share, num_clients=3, initial_balance=10)
 
     requests = [
         RegistrationRequest(id=f"client-{i}", public_key=fake_pk) for i in range(3)

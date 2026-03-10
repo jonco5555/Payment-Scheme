@@ -8,13 +8,13 @@ system:
   demo_enabled: true
 
 servers:
-  - id: 0
+  - id: server-0
     address: http://localhost:8000
-  - id: 1
+  - id: server-1
     address: http://localhost:8001
-  - id: 2
+  - id: server-2
     address: http://localhost:8002
-  - id: 3
+  - id: server-3
     address: http://localhost:8003
-  - id: 4
+  - id: server-4
     address: http://localhost:8004

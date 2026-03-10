@@ -7,6 +7,7 @@ from payment.utils import configure_logging
 
 
 async def main(
+    id: str,
     key_share: KeyShare,
     num_clients: int,
     initial_balance: int,
@@ -14,6 +15,7 @@ async def main(
 ) -> None:
     configure_logging()
     server = Server(
+        id=id,
         key_share=key_share,
         num_clients=num_clients,
         initial_balance=initial_balance,
