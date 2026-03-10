@@ -31,7 +31,7 @@ def create_app(client: Client) -> FastAPI:
             return {"status": "ok"}
 
         @app.post("/demo/pay")
-        async def pay(request: PayRequest):
+        async def pay_request(request: PayRequest):
             await client.pay_request(
                 recipient_id=request.recipient_id,
                 recipient_address=request.recipient_address,
