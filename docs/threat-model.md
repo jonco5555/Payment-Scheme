@@ -31,7 +31,6 @@ We consider a **passive adversary** that can observe all server-side state and a
 | Plaintext `TokenPayload` before it is embedded in the final token | Client (sender or recipient) |
 | Mapping between blinded and unblinded messages | Client |
 
-### Auxiliary information
 
 The adversary may know:
 
@@ -40,10 +39,6 @@ The adversary may know:
 - The system public key `PK` and all server key shares `sᵢ`.
 - The full protocol specification.
 
-The adversary does **not** have access to:
-
-- Any client's private key material (long-term or one-time).
-- Any blinding factor `r` or `r_r`.
 
 ## Why Unlinkability Holds
 
@@ -70,17 +65,6 @@ H(\text{TokenPayload}) = r^{-1} \cdot H'
 $$
 
 Since `r` is a uniformly random scalar in `Z_q` known only to the client, and `H'` is a uniformly random element of `G₂` from the server's perspective, the distribution of `H'` is **independent** of the underlying `TokenPayload` given the adversary's view.
-
-### Formal reduction
-
-The unlinkability of this scheme reduces to the **one-more discrete logarithm (OMDL)** assumption on the BLS12-381 curve, which is a standard assumption for blind BLS signatures.
-
-!!! info "Reduction sketch"
-    Suppose an adversary A can link Mint to Pay with advantage ε.  Then we build an algorithm B that uses A to solve OMDL: B simulates the servers honestly, receives blinding queries from A, and uses A's linking output to correlate group elements — contradicting OMDL hardness.
-
-### What breaks if blindness is removed
-
-Without blinding, the server would see `H(TokenPayload)` directly during Mint.  When the same `TokenPayload` appears inside a spent token during Pay, the server trivially links the two operations.  Blind signatures are therefore **necessary** for unlinkability, not merely an optimization.
 
 ## Unlinkability Through the Protocol
 

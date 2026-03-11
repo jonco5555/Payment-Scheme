@@ -2,17 +2,19 @@
 
 ## High-Level View
 
-The system is a replicated payment service where **n = 5 threshold servers** jointly sign tokens using BLS blind signatures, and **clients** interact with those servers over HTTP to mint and transfer value.
+The system is a replicated payment service where **n threshold servers** jointly sign tokens using BLS blind signatures, and **clients** interact with those servers over HTTP to mint and transfer value.
+
 
 ```mermaid
-graph TB
+graph
     subgraph Clients
         C0[Client 0<br/>FastAPI :9000]
         C1[Client 1<br/>FastAPI :9001]
-        C2[Client 2<br/>FastAPI :9002]
     end
 
     subgraph Threshold Servers
+        direction LR
+
         S0[Server 0<br/>share s₁]
         S1[Server 1<br/>share s₂]
         S2[Server 2<br/>share s₃]
@@ -20,7 +22,7 @@ graph TB
         S4[Server 4<br/>share s₅]
     end
 
-    C0 -- "POST /mint, /pay, /register" --> S0
+    C0 -- "POST /register, /mint, /pay" --> S0
     C0 --> S1
     C0 --> S2
     C0 --> S3
@@ -93,46 +95,14 @@ A **Typer** CLI that provides three commands:
 | `payment server` | Start a server process with a given share file |
 | `payment client` | Start a client process |
 
-## Deployment Topology
-
-```mermaid
-graph LR
-    subgraph Docker Network
-        S0[server-0:8000]
-        S1[server-1:8000]
-        S2[server-2:8000]
-        S3[server-3:8000]
-        S4[server-4:8000]
-        C0[client-0:9000]
-        C1[client-1:9001]
-        C2[client-2:9002]
-        C3[client-3:9003]
-        C4[client-4:9004]
-    end
-
-    Host["Host machine"] -- "ports 9000-9004" --> C0
-    Host --> C1
-    Host --> C2
-    Host --> C3
-    Host --> C4
-
-    C0 --> S0
-    C0 --> S1
-    C0 --> S2
-    C0 --> S3
-    C0 --> S4
-```
-
-In Docker, each server listens on port `8000` inside its container.  Clients are exposed to the host on ports `9000`–`9004` for demo interaction.
-
 ## Configuration
 
 Two YAML files control the system:
 
-- **`config/config.yaml`** — local development (servers on `localhost:8000`–`8004`)
-- **`config/config.docker.yaml`** — Docker Compose (servers addressed by container name)
+- **`config/config.yaml`** — local development
+- **`config/config.docker.yaml`** — Docker Compose
 
-Both share the same schema defined by `Config` / `SystemConfig` / `ServerConfig` in `payment.models`.
+Both share the same schema defined by `Config` in `payment.models`.
 
 | Field | Meaning |
 |-------|---------|

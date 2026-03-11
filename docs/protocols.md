@@ -28,6 +28,7 @@ sequenceDiagram
 ```
 
 The server blocks the response until all `num_clients` have registered (using `asyncio.Event`), ensuring a synchronized start.
+The client uses a timeout that equals `2 · Δ`, where `Δ` is the network synchronization delay.
 
 ## Mint
 

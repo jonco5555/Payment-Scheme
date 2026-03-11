@@ -1,6 +1,6 @@
 # Cryptographic Primitives
 
-This page describes the cryptographic building blocks used by the payment scheme.  All elliptic-curve operations use the **BLS12-381** pairing-friendly curve via the [`py-ecc`](https://github.com/ethereum/py_ecc) library.
+This page describes the cryptographic building blocks used by the payment scheme.  All elliptic-curve operations use the **BLS12-381** curve via the [`py-ecc`](https://github.com/ethereum/py_ecc) library.
 
 ## BLS12-381 Curve
 
@@ -31,9 +31,7 @@ graph LR
 ### Key functions
 
 - **`generate_polynomial(degree)`** — Sample random coefficients `a₀, …, a_f ∈ Z_q`.
-- **`evaluate_polynomial(coeffs, x)`** — Horner's method: `g(x) mod q`.
 - **`lagrange_coefficient(i, points)`** — Compute `λᵢ = ∏_{j≠i} (−j)/(i−j) mod q` for interpolation at `x = 0`.
-- **`reconstruct_secret(shares)`** — Recover `g(0) = Σᵢ sᵢ · λᵢ mod q` from any `f + 1` shares.
 - **`generate_shares(n, f)`** — End-to-end: create polynomial, derive SK, PK, and `n` shares.
 
 ## BLS Signatures
@@ -58,7 +56,6 @@ This holds because `PK = SK · G₁`, so both sides equal `e(H(m), G₁)^{SK}`.
 
 - **`sign_message(message, private_key)`** — Compute `σ = H(m)^{sk}`.
 - **`verify_signature(message, signature, public_key)`** — Check the pairing equation.
-- **`create_fresh_key_pair()`** — Sample `sk ←$ Z_q`, return `(pk = sk·G₁, sk)`.
 
 ## Threshold Signing
 
@@ -76,8 +73,8 @@ $$
 
 ### Key functions
 
-- **`partial_sign_blinded_message(blinded_msg, key_share)`** — Server-side: `σᵢ = blinded\_msg^{sᵢ}`.
-- **`combine_partial_signatures(partials)`** — Client-side: `σ = Σᵢ λᵢ · σᵢ` (additive notation in `G₂`).
+- **`partial_sign_blinded_message(blinded_msg, key_share)`** — Server-side: `σᵢ = blinded_msg^{sᵢ}`.
+- **`combine_partial_signatures(partials)`** — Client-side: `σ = Σᵢ λᵢ · σᵢ`.
 
 ## Blind Signatures
 

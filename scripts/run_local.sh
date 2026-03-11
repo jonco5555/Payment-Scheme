@@ -19,6 +19,10 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+echo "Generating system public key and key shares..."
+payment setup --config-path "$CONFIG_PATH"
+echo "Key shares generated."
+
 for i in $(seq 0 $((NUM_SERVERS - 1))); do
     server_id="server-${i}"
     echo "Starting ${server_id}..."
