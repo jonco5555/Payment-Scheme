@@ -52,6 +52,8 @@ plugins:
       nav_file: SUMMARY.md
   - mkdocstrings
   - section-index
+  - chatbot:
+      url: https://payment-scheme-903213368620.europe-west1.run.app/?embed=true
 markdown_extensions:
   - admonition
   - codehilite
