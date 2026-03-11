@@ -24,6 +24,11 @@ payment = "payment.cli:app"
 requires = ["uv_build>=0.8.17,<0.9.0"]
 build-backend = "uv_build"
 
+[tool.uv.workspace]
+members = [
+    "chatbot-app",
+]
+
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.1",
@@ -35,6 +40,7 @@ dev = [
 docs = [
     "mkdocs>=1.6.1",
     "mkdocs-awesome-pages-plugin>=2.10.1",
+    "mkdocs-chatbot>=0.0.2",
     "mkdocs-gen-files>=0.6.0",
     "mkdocs-literate-nav>=0.6.2",
     "mkdocs-material>=9.7.5",
