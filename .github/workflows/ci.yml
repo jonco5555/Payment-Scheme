@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,6 +35,4 @@ jobs:
 
       - name: Upload docs
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        env:
-          ENABLE_PDF_EXPORT: 1
         run: uv run --group docs mkdocs gh-deploy --force
