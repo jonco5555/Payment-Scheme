@@ -8,8 +8,7 @@ nav:
   - Unlinkability & Threat Model: threat-model.md
   - Running the System: running.md
   - Testing: testing.md
-  - Code Guide: code-guide.md
-  - Reference: reference/
+  - Code Reference: reference/
 
 theme:
   name: material

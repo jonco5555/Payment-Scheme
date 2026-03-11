@@ -27,5 +27,4 @@ This project implements System Project 2 from [EX4 RDS 2026](tasks/ex4_2026.pdf)
 | [Unlinkability & Threat Model](threat-model.md) | Formal adversary model and unlinkability argument |
 | [Running the System](running.md) | Setup, local run, Docker demo |
 | [Testing](testing.md) | Test suite overview and what each test verifies |
-| [Code Guide](code-guide.md) | Recommended reading order to understand the codebase |
 | [Reference](reference/payment/index.md) | Auto-generated API docs from source docstrings |

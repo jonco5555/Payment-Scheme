@@ -5,64 +5,22 @@ The test suite lives in `tests/` and is organized into four modules, ordered fro
 ## Running Tests
 
 ```bash
-uv run pytest tests          # all tests
-uv run pytest tests -v       # verbose output
-uv run pytest tests -k mint  # only tests matching "mint"
+uv run pytest tests
 ```
 
 ## Test Modules
 
 ### `test_shares.py` — Cryptographic primitives
 
-Unit tests for every function in `payment.crypto.shares`:
-
-| Test | What it verifies |
-|------|-----------------|
-| `test_generate_polynomial_length` | Polynomial has `degree + 1` coefficients |
-| `test_generate_polynomial_randomness` | Two polynomials are distinct (randomness) |
-| `test_evaluate_polynomial_constant` | Constant polynomial evaluates correctly |
-| `test_evaluate_polynomial_linear` | Linear polynomial `5 + 3x` at several points |
-| `test_lagrange_coefficient_sum` | Lagrange coefficients for 3 points sum to 1 |
-| `test_lagrange_reconstruction` | Reconstruct secret from polynomial evaluations |
-| `test_generate_shares_count` | Correct number of shares generated |
-| `test_generate_shares_ids` | Share IDs are `1, 2, …, n` |
-| `test_reconstruct_with_threshold` | Reconstruct secret with exactly `f+1` shares |
-| `test_reconstruct_with_all_shares` | Reconstruct with all `n` shares |
-| `test_insufficient_shares_fails` | Fewer than `f+1` shares yield wrong result |
-| `test_partial_sign_blinded_message_deterministic` | Same input → same partial signature |
-| `test_combine_and_verify` | Combine partials, unblind, verify against PK |
-| `test_different_subsets_same_signature` | Two different `f+1` subsets produce the same combined signature |
-| `test_signature_invalid_for_different_message` | Signature on message A fails verification for message B |
-| `test_signature_invalid_for_wrong_key` | Signature under one key fails verification under another |
-| `test_end_to_end_blind_signing_flow` | Full blind sign flow: create key pair → blind → partial sign → combine → unblind → verify |
+Unit tests for every function in `payment.crypto.shares`.
 
 ### `test_server.py` — Server logic
 
-Unit tests for `payment.server.server.Server` with **mocked crypto** (no real elliptic-curve math, making tests fast):
-
-| Test | What it verifies |
-|------|-----------------|
-| `test_register` | Client appears in server state with correct balance |
-| `test_register_concurrent` | Three concurrent registrations all succeed |
-| `test_register_duplicate_raises` | Re-registering the same client raises `ValueError` |
-| `test_unregister` | Client removed from server state |
-| `test_mint` | Returns partial signature; balance decremented |
-| `test_mint_insufficient_balance_raises` | Zero-balance client cannot mint |
-| `test_pay` | Returns partial signature; token added to nullifiers |
-| `test_pay_duplicate_token_raises` | Replaying the same transaction raises `ValueError` (double-spend) |
+Unit tests for `payment.server.server.Server` with **mocked crypto** (no real elliptic-curve math, making tests fast).
 
 ### `test_client.py` — Client logic
 
-Unit tests for `payment.client.client.Client` with mocked crypto and mocked HTTP (via `respx`):
-
-| Test | What it verifies |
-|------|-----------------|
-| `test_register` | Registration broadcast succeeds |
-| `test_mint_stores_token` | After minting, client has exactly one token |
-| `test_broadcast_raises_without_quorum` | If fewer than `f+1` servers respond, `RuntimeError` is raised |
-| `test_pay_raises_with_no_tokens` | Cannot pay when wallet is empty |
-| `test_receive_payment_stores_token` | Accepting a payment stores the token and removes the pending key |
-| `test_receive_payment_rejects_invalid_signature` | Payment with bad signature is rejected |
+Unit tests for `payment.client.client.Client` with mocked crypto and mocked HTTP (via `respx`).
 
 ### `test_integration.py` — End-to-end integration
 
@@ -84,11 +42,6 @@ Full integration tests with **real cryptography** (BLS12-381 operations, no mock
 3. **Transcript-level**: The set of `blinded_message` values from all Mint transcripts is **disjoint** from all field values in Pay transcripts (recipient blinded payload, token payload, token signature).
 
 ## Test Infrastructure
-
-### Fixtures (`conftest.py`)
-
-- `fake_pk`, `fake_sk`, `fake_sig`, `fake_partial_sig` — Lightweight stand-ins for crypto objects.
-- `_mock_crypto` — Patches all crypto functions in both client and server modules so unit tests run instantly without elliptic-curve computation.
 
 ### `respx` for HTTP mocking
 
